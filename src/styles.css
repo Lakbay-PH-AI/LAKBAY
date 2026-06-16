@@ -83,6 +83,7 @@ button {
 .nav-item,
 .icon-button,
 .primary-small,
+.session-button,
 .search-action,
 .suggestion-chip,
 .category-chip,
@@ -199,6 +200,7 @@ button {
 
 .icon-button,
 .primary-small,
+.session-button,
 .summary-actions button,
 .share-actions button,
 .provider-actions button,
@@ -209,6 +211,16 @@ button {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.session-button {
+  font-weight: 800;
+}
+
+.session-button.authenticated {
+  border-color: color-mix(in srgb, var(--accent), white 20%);
+  background: rgba(57, 214, 195, 0.16);
+  color: var(--text);
 }
 
 .icon-button {
@@ -295,6 +307,41 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
   padding: 16px;
+}
+
+.auth-gate {
+  margin-top: 22px;
+  border: 1px solid color-mix(in srgb, var(--accent-2), white 10%);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 179, 90, 0.18), rgba(57, 214, 195, 0.08));
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.auth-gate p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.auth-gate div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auth-gate button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  padding: 0 12px;
+  font-weight: 800;
 }
 
 .search-box textarea {
@@ -891,6 +938,15 @@ button {
   .topbar-actions button,
   .summary-actions button,
   .search-action {
+    width: 100%;
+  }
+
+  .auth-gate {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-gate div,
+  .auth-gate button {
     width: 100%;
   }
 

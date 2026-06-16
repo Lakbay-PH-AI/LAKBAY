@@ -15,6 +15,7 @@ import {
   Moon,
   Palette,
   Plane,
+  ShieldCheck,
   Search,
   Settings,
   Share2,
@@ -39,8 +40,10 @@ import type {
 
 type View = "Home" | "Explore" | "Destination" | "Saved" | "Share" | "Settings";
 type DealFilter = "All deals" | "Klook only" | "Hotels" | "Activities" | "Transportation" | "Theme parks" | "Food and dining" | "Expiring soon" | "Highest discount" | "No minimum spend";
+type SessionStatus = "guest" | "authenticated";
 
 const initialPrompt = "Find beachfront resorts in Palawan with airport transfer and family rooms";
+const authRequiredMessage = "You must log in or register to use the AI search feature. Please log in or create an account to continue.";
 const categoryIcons: Record<Category, React.ComponentType<{ size?: number }>> = {
   Hotels: BedDouble,
   Accommodations: Bookmark,
@@ -88,6 +91,8 @@ export default function App() {
   const [selectedDestination, setSelectedDestination] = useState<Destination>(analysis.destination);
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState("Ready for a Philippines-only search.");
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>(() => getSessionStatus());
+  const isAuthenticated = sessionStatus === "authenticated";
 
   const shellClass = [
     "app-shell",
@@ -105,6 +110,14 @@ export default function App() {
   } as React.CSSProperties;
 
   function runSearch(nextPrompt = prompt) {
+    const currentSession = getSessionStatus();
+    setSessionStatus(currentSession);
+    if (currentSession !== "authenticated") {
+      setToast(authRequiredMessage);
+      setView("Home");
+      return;
+    }
+
     setToast("Analyzing destination, style, categories, and matching deals...");
     startTransition(() => {
       window.setTimeout(() => {
@@ -130,11 +143,34 @@ export default function App() {
     setToast(`${value} copied.`);
   }
 
+  function authenticate(mode: "login" | "register") {
+    window.localStorage.setItem(
+      "luzonloop-session",
+      JSON.stringify({ status: "authenticated", mode, updatedAt: new Date().toISOString() })
+    );
+    setSessionStatus("authenticated");
+    setToast(mode === "login" ? "Logged in. AI search is available." : "Account created. AI search is available.");
+  }
+
+  function signOut() {
+    window.localStorage.removeItem("luzonloop-session");
+    setSessionStatus("guest");
+    setToast(authRequiredMessage);
+    setView("Home");
+  }
+
   return (
     <div className={shellClass} style={appStyle}>
       <AppNav active={view} onChange={setView} />
       <main className="main-stage">
-        <TopBar toast={toast} onSettings={() => setView("Settings")} />
+        <TopBar
+          toast={toast}
+          isAuthenticated={isAuthenticated}
+          onLogin={() => authenticate("login")}
+          onRegister={() => authenticate("register")}
+          onSignOut={signOut}
+          onSettings={() => setView("Settings")}
+        />
         {view === "Home" && (
           <HomeView
             prompt={prompt}
@@ -143,6 +179,10 @@ export default function App() {
             toggleCategory={toggleCategory}
             onSearch={runSearch}
             isPending={isPending}
+            isAuthenticated={isAuthenticated}
+            authMessage={authRequiredMessage}
+            onLogin={() => authenticate("login")}
+            onRegister={() => authenticate("register")}
             onDestination={(destination) => {
               setSelectedDestination(destination);
               setView("Destination");
@@ -173,6 +213,17 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+function getSessionStatus(): SessionStatus {
+  try {
+    const session = window.localStorage.getItem("luzonloop-session");
+    if (!session) return "guest";
+    const parsed = JSON.parse(session) as { status?: string };
+    return parsed.status === "authenticated" ? "authenticated" : "guest";
+  } catch {
+    return "guest";
+  }
 }
 
 function AppNav({ active, onChange }: { active: View; onChange: (view: View) => void }) {
@@ -211,7 +262,21 @@ function AppNav({ active, onChange }: { active: View; onChange: (view: View) => 
   );
 }
 
-function TopBar({ toast, onSettings }: { toast: string; onSettings: () => void }) {
+function TopBar({
+  toast,
+  isAuthenticated,
+  onLogin,
+  onRegister,
+  onSignOut,
+  onSettings
+}: {
+  toast: string;
+  isAuthenticated: boolean;
+  onLogin: () => void;
+  onRegister: () => void;
+  onSignOut: () => void;
+  onSettings: () => void;
+}) {
   return (
     <header className="topbar">
       <div>
@@ -219,6 +284,17 @@ function TopBar({ toast, onSettings }: { toast: string; onSettings: () => void }
         <h1>Ask for a Philippines trip</h1>
       </div>
       <div className="topbar-actions">
+        {isAuthenticated ? (
+          <button className="session-button authenticated" onClick={onSignOut}>
+            <ShieldCheck size={17} />
+            Logged in
+          </button>
+        ) : (
+          <>
+            <button className="session-button" onClick={onLogin}>Log in</button>
+            <button className="session-button" onClick={onRegister}>Register</button>
+          </>
+        )}
         <button className="icon-button" aria-label="Open settings" onClick={onSettings}>
           <Palette size={19} />
         </button>
@@ -238,6 +314,10 @@ function HomeView(props: {
   toggleCategory: (category: Category) => void;
   onSearch: (prompt?: string) => void;
   isPending: boolean;
+  isAuthenticated: boolean;
+  authMessage: string;
+  onLogin: () => void;
+  onRegister: () => void;
   onDestination: (destination: Destination) => void;
 }) {
   return (
@@ -247,6 +327,9 @@ function HomeView(props: {
           <h2>Plan smarter across hotels, ferries, markets, theme parks, food, and deals.</h2>
           <p>Type a natural-language travel request and LuzonLoop turns it into structured Philippine travel modules.</p>
         </div>
+        {!props.isAuthenticated && (
+          <AuthGate message={props.authMessage} onLogin={props.onLogin} onRegister={props.onRegister} />
+        )}
         <HeroSearch {...props} />
         <PromptSuggestionChips onPick={(value) => props.onSearch(value)} />
         <CategoryChips selected={props.selectedCategories} onToggle={props.toggleCategory} />
@@ -256,6 +339,19 @@ function HomeView(props: {
         <TrendingDestinations onSelect={props.onDestination} />
       </section>
     </div>
+  );
+}
+
+function AuthGate({ message, onLogin, onRegister }: { message: string; onLogin: () => void; onRegister: () => void }) {
+  return (
+    <section className="auth-gate" aria-live="polite">
+      <ShieldCheck size={22} />
+      <p>{message}</p>
+      <div>
+        <button type="button" onClick={onLogin}>Log in</button>
+        <button type="button" onClick={onRegister}>Create account</button>
+      </div>
+    </section>
   );
 }
 
