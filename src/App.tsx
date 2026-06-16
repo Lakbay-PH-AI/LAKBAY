@@ -92,6 +92,7 @@ export default function App() {
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState("Ready for a Philippines-only search.");
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>(() => getSessionStatus());
+  const [searchNotice, setSearchNotice] = useState("");
   const isAuthenticated = sessionStatus === "authenticated";
 
   const shellClass = [
@@ -114,10 +115,12 @@ export default function App() {
     setSessionStatus(currentSession);
     if (currentSession !== "authenticated") {
       setToast(authRequiredMessage);
+      setSearchNotice(authRequiredMessage);
       setView("Home");
       return;
     }
 
+    setSearchNotice("");
     setToast("Analyzing destination, style, categories, and matching deals...");
     startTransition(() => {
       window.setTimeout(() => {
@@ -149,12 +152,14 @@ export default function App() {
       JSON.stringify({ status: "authenticated", mode, updatedAt: new Date().toISOString() })
     );
     setSessionStatus("authenticated");
+    setSearchNotice("");
     setToast(mode === "login" ? "Logged in. AI search is available." : "Account created. AI search is available.");
   }
 
   function signOut() {
     window.localStorage.removeItem("luzonloop-session");
     setSessionStatus("guest");
+    setSearchNotice(authRequiredMessage);
     setToast(authRequiredMessage);
     setView("Home");
   }
@@ -181,6 +186,7 @@ export default function App() {
             isPending={isPending}
             isAuthenticated={isAuthenticated}
             authMessage={authRequiredMessage}
+            searchNotice={searchNotice}
             onLogin={() => authenticate("login")}
             onRegister={() => authenticate("register")}
             onDestination={(destination) => {
@@ -316,6 +322,7 @@ function HomeView(props: {
   isPending: boolean;
   isAuthenticated: boolean;
   authMessage: string;
+  searchNotice: string;
   onLogin: () => void;
   onRegister: () => void;
   onDestination: (destination: Destination) => void;
@@ -359,7 +366,9 @@ function HeroSearch({
   prompt,
   setPrompt,
   onSearch,
-  isPending
+  isPending,
+  isAuthenticated,
+  searchNotice
 }: {
   prompt: string;
   setPrompt: (value: string) => void;
@@ -367,6 +376,8 @@ function HeroSearch({
   toggleCategory: (category: Category) => void;
   onSearch: (prompt?: string) => void;
   isPending: boolean;
+  isAuthenticated: boolean;
+  searchNotice: string;
 }) {
   return (
     <div className="search-box">
@@ -379,9 +390,10 @@ function HeroSearch({
         <span className="animated-placeholder">Analyzes destination, category, style, budget, duration, and coupons.</span>
         <button className="search-action" onClick={() => onSearch()} disabled={isPending || prompt.trim().length < 3}>
           {isPending ? <span className="spinner" /> : <Search size={20} />}
-          Search
+          {isAuthenticated ? "Search" : "Log in to search"}
         </button>
       </div>
+      {searchNotice && <p className="search-notice">{searchNotice}</p>}
     </div>
   );
 }

@@ -370,6 +370,17 @@ button {
   font-size: 0.9rem;
 }
 
+.search-notice {
+  margin: 12px 0 0;
+  border: 1px solid color-mix(in srgb, var(--accent-2), white 12%);
+  border-radius: 8px;
+  background: rgba(255, 179, 90, 0.14);
+  color: var(--text);
+  padding: 10px 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .search-action {
   min-height: 50px;
   padding: 0 22px;
