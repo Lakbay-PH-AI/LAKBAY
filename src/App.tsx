@@ -1,910 +1,774 @@
-import { useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  BadgeCheck,
   BedDouble,
+  Bell,
   Bookmark,
+  Bot,
   Bus,
   Check,
-  ChevronRight,
+  Clipboard,
   Copy,
-  Download,
-  FerrisWheel,
-  Mail,
-  MapPin,
-  MessageCircle,
+  Database,
+  ExternalLink,
+  Eye,
+  Globe2,
+  Home,
+  KeyRound,
+  Lock,
+  LogIn,
+  LogOut,
+  Map,
   Moon,
-  Palette,
-  Plane,
-  ShieldCheck,
+  Save,
   Search,
+  Send,
   Settings,
-  Share2,
-  ShoppingBag,
+  ShieldCheck,
   Sparkles,
-  Star,
   SunMedium,
   Ticket,
-  Utensils
+  User,
+  Wrench
 } from "lucide-react";
-import { allCategories, deals, destinations, savedItems } from "./data/mockData";
-import { analyzePrompt, promptSuggestions } from "./utils/search";
-import type {
-  AIProviderSetting,
-  Category,
-  CouponDeal,
-  Destination,
-  SearchAnalysis,
-  SharePayload,
-  UserPreferences
-} from "./types/travel";
+import { aiProviders, destinations, recommendations, webhookEvents, webhooks } from "./data/mockData";
+import type { ModuleId, NavItem, PromptBuilderState, Recommendation, ThemeMode, UserAccount } from "./types/travel";
+import { buildTravelPrompt, copyText, filterRecommendations } from "./utils/search";
+import islandPreview from "./assets/lakbay-islands.png";
 
-type View = "Home" | "Explore" | "Destination" | "Saved" | "Share" | "Settings";
-type DealFilter = "All deals" | "Klook only" | "Hotels" | "Activities" | "Transportation" | "Theme parks" | "Food and dining" | "Expiring soon" | "Highest discount" | "No minimum spend";
-type SessionStatus = "guest" | "authenticated";
-
-const initialPrompt = "Find beachfront resorts in Palawan with airport transfer and family rooms";
-const authRequiredMessage = "You must log in or register to use the AI search feature. Please log in or create an account to continue.";
-const categoryIcons: Record<Category, React.ComponentType<{ size?: number }>> = {
-  Hotels: BedDouble,
-  Accommodations: Bookmark,
-  Transportation: Bus,
-  "Theme parks": FerrisWheel,
-  Markets: ShoppingBag,
-  Foods: Utensils
-};
-
-const defaultPreferences: UserPreferences = {
-  nightMode: true,
-  glassMode: true,
-  depthMode: true,
-  animatedMode: true,
-  fontFamily: "Inter",
-  fontScale: 1,
-  animationIntensity: 70,
-  resultDensity: "standard",
-  responseStyle: "Balanced",
-  couponSearch: true,
-  preferKlook: true,
-  includeThirdParty: true,
-  verifiedOnly: false,
-  hideExpired: true,
-  notifyBetterDeals: true
-};
-
-const defaultProviders: AIProviderSetting[] = [
-  { provider: "OpenAI", apiKey: "", baseUrl: "", model: "gpt-4.1-mini", enabled: true, isDefault: true },
-  { provider: "Claude", apiKey: "", baseUrl: "", model: "claude-3-5-sonnet", enabled: false, isDefault: false },
-  { provider: "Perplexity", apiKey: "", baseUrl: "", model: "sonar-pro", enabled: false, isDefault: false },
-  { provider: "Gemini", apiKey: "", baseUrl: "", model: "gemini-1.5-pro", enabled: false, isDefault: false },
-  { provider: "Mistral", apiKey: "", baseUrl: "", model: "mistral-large", enabled: false, isDefault: false },
-  { provider: "Groq", apiKey: "", baseUrl: "", model: "llama-3.3-70b-versatile", enabled: false, isDefault: false },
-  { provider: "OpenRouter", apiKey: "", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", enabled: false, isDefault: false }
+const navItems: NavItem[] = [
+  { id: "home", label: "Home", icon: Home },
+  { id: "dashboard", label: "Dashboard", icon: Map, protected: true },
+  { id: "planner", label: "AI Planner", icon: Sparkles, protected: true },
+  { id: "hotels", label: "Hotels", icon: BedDouble },
+  { id: "transport", label: "Transport", icon: Bus },
+  { id: "tickets", label: "Tickets", icon: Ticket },
+  { id: "deals", label: "Deals", icon: BadgeCheck },
+  { id: "klook", label: "Klook", icon: Globe2 },
+  { id: "saved", label: "Saved Trips", icon: Bookmark, protected: true },
+  { id: "integrations", label: "Integrations", icon: KeyRound, protected: true },
+  { id: "settings", label: "Settings", icon: Settings, protected: true },
+  { id: "admin", label: "Admin", icon: Wrench, protected: true, adminOnly: true },
+  { id: "profile", label: "Profile", icon: User, protected: true }
 ];
 
-export default function App() {
-  const [view, setView] = useState<View>("Home");
-  const [prompt, setPrompt] = useState(initialPrompt);
-  const [selectedCategories, setSelectedCategories] = useState<Category[]>(["Hotels", "Transportation"]);
-  const [analysis, setAnalysis] = useState<SearchAnalysis>(() => analyzePrompt(initialPrompt, ["Hotels", "Transportation"]));
-  const [preferences, setPreferences] = useState(defaultPreferences);
-  const [providers, setProviders] = useState(defaultProviders);
-  const [selectedDestination, setSelectedDestination] = useState<Destination>(analysis.destination);
-  const [isPending, startTransition] = useTransition();
-  const [toast, setToast] = useState("Ready for a Philippines-only search.");
-  const [sessionStatus, setSessionStatus] = useState<SessionStatus>(() => getSessionStatus());
-  const [searchNotice, setSearchNotice] = useState("");
-  const isAuthenticated = sessionStatus === "authenticated";
+const initialPromptState: PromptBuilderState = {
+  destination: "Boracay",
+  dateRange: "2026-08-12 to 2026-08-17",
+  travelers: "2 adults",
+  adults: 2,
+  kids: 0,
+  budget: "PHP 60,000",
+  tripType: "Beach, food, light adventure",
+  hotelLevel: "Mid-range beachfront",
+  transportPreference: "Flight plus airport transfer",
+  mustSee: "White Beach, sunset sailing, island hopping, local seafood",
+  pace: "Balanced",
+  accessibility: "",
+  food: "Seafood, Filipino comfort food, cafes",
+  includeKlook: true,
+  includeDiscounts: true,
+  optimizeFor: "best value",
+  promptType: "all-in-one master prompt"
+};
 
-  const shellClass = [
-    "app-shell",
-    preferences.nightMode ? "theme-dark" : "theme-light",
-    preferences.glassMode ? "mode-glass" : "",
-    preferences.depthMode ? "mode-depth" : "",
-    preferences.animatedMode ? "mode-animated" : "",
-    `density-${preferences.resultDensity}`
-  ].join(" ");
+const guestMessage = "Sign in to use AI travel search, generate prompts, save trips, and access personalized recommendations.";
 
-  const appStyle = {
-    "--font-family": preferences.fontFamily,
-    "--font-scale": preferences.fontScale,
-    "--motion-scale": preferences.animationIntensity / 100
-  } as React.CSSProperties;
+function App() {
+  const [activeModule, setActiveModule] = useState<ModuleId>("planner");
+  const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [glass, setGlass] = useState(74);
+  const [authView, setAuthView] = useState<"signin" | "signup" | "forgot" | "reset" | null>(null);
+  const [user, setUser] = useState<UserAccount | null>(null);
+  const [promptState, setPromptState] = useState(initialPromptState);
+  const [query, setQuery] = useState("Boracay beachfront hotel airport transfer Klook activities");
+  const [category, setCategory] = useState("all");
+  const [generatedPrompt, setGeneratedPrompt] = useState(buildTravelPrompt(initialPromptState));
+  const [savedIds, setSavedIds] = useState<string[]>(["hotel-1", "klook-1"]);
+  const [toast, setToast] = useState("");
 
-  function runSearch(nextPrompt = prompt) {
-    const currentSession = getSessionStatus();
-    setSessionStatus(currentSession);
-    if (currentSession !== "authenticated") {
-      setToast(authRequiredMessage);
-      setSearchNotice(authRequiredMessage);
-      setView("Home");
+  const visibleRecommendations = useMemo(() => filterRecommendations(recommendations, query, category), [query, category]);
+  const isAuthed = Boolean(user);
+
+  const protect = (module: ModuleId) => {
+    const target = navItems.find((item) => item.id === module);
+    if (target?.adminOnly && user?.role !== "admin") {
+      setAuthView("signin");
+      setToast("Admin access requires an admin session.");
       return;
     }
+    if (target?.protected && !isAuthed) {
+      setActiveModule(module);
+      setAuthView("signin");
+      setToast(guestMessage);
+      return;
+    }
+    setActiveModule(module);
+  };
 
-    setSearchNotice("");
-    setToast("Analyzing destination, style, categories, and matching deals...");
-    startTransition(() => {
-      window.setTimeout(() => {
-        const next = analyzePrompt(nextPrompt, selectedCategories);
-        setAnalysis(next);
-        setSelectedDestination(next.destination);
-        setPrompt(nextPrompt);
-        setView("Explore");
-        setToast(`AI answer and structured results ready for ${next.destination.name}.`);
-      }, 650);
+  const signIn = (role: "user" | "admin" = "user") => {
+    setUser({
+      name: role === "admin" ? "Admin Traveller" : "Maria Santos",
+      email: role === "admin" ? "admin@lakbay.ai" : "maria@lakbay.ai",
+      role,
+      currency: "PHP",
+      timezone: "Asia/Manila"
     });
-  }
+    setAuthView(null);
+    setToast("Signed in. Your AI travel workspace is unlocked.");
+  };
 
-  function toggleCategory(category: Category) {
-    setSelectedCategories((current) =>
-      current.includes(category) ? current.filter((item) => item !== category) : [...current, category]
-    );
-  }
+  const guardedAction = (action: () => void) => {
+    if (!isAuthed) {
+      setAuthView("signin");
+      setToast(guestMessage);
+      return;
+    }
+    action();
+  };
 
-  function copyDeal(deal: CouponDeal) {
-    const value = deal.code ?? "AUTO-APPLIED";
-    void navigator.clipboard?.writeText(value);
-    setToast(`${value} copied.`);
-  }
+  const saveRecommendation = (id: string) => {
+    guardedAction(() => {
+      setSavedIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+      setToast("Saved to your travel workspace.");
+    });
+  };
 
-  function authenticate(mode: "login" | "register") {
-    window.localStorage.setItem(
-      "luzonloop-session",
-      JSON.stringify({ status: "authenticated", mode, updatedAt: new Date().toISOString() })
-    );
-    setSessionStatus("authenticated");
-    setSearchNotice("");
-    setToast(mode === "login" ? "Logged in. AI search is available." : "Account created. AI search is available.");
-  }
-
-  function signOut() {
-    window.localStorage.removeItem("luzonloop-session");
-    setSessionStatus("guest");
-    setSearchNotice(authRequiredMessage);
-    setToast(authRequiredMessage);
-    setView("Home");
-  }
+  const generatePrompt = () => {
+    guardedAction(() => {
+      setGeneratedPrompt(buildTravelPrompt(promptState));
+      setToast("Detailed Philippines travel prompt generated.");
+    });
+  };
 
   return (
-    <div className={shellClass} style={appStyle}>
-      <AppNav active={view} onChange={setView} />
-      <main className="main-stage">
-        <TopBar
-          toast={toast}
-          isAuthenticated={isAuthenticated}
-          onLogin={() => authenticate("login")}
-          onRegister={() => authenticate("register")}
-          onSignOut={signOut}
-          onSettings={() => setView("Settings")}
-        />
-        {view === "Home" && (
-          <HomeView
-            prompt={prompt}
-            setPrompt={setPrompt}
-            selectedCategories={selectedCategories}
-            toggleCategory={toggleCategory}
-            onSearch={runSearch}
-            isPending={isPending}
-            isAuthenticated={isAuthenticated}
-            authMessage={authRequiredMessage}
-            searchNotice={searchNotice}
-            onLogin={() => authenticate("login")}
-            onRegister={() => authenticate("register")}
-            onDestination={(destination) => {
-              setSelectedDestination(destination);
-              setView("Destination");
-            }}
-          />
-        )}
-        {view === "Explore" && (
-          <ResultsView
-            analysis={analysis}
-            isPending={isPending}
-            onSave={() => setToast("Saved to your trip shelf.")}
-            onShare={() => setView("Share")}
-            onCopyDeal={copyDeal}
-          />
-        )}
-        {view === "Destination" && <DestinationDetail destination={selectedDestination} analysis={analysis} onCopyDeal={copyDeal} />}
-        {view === "Saved" && <SavedView />}
-        {view === "Share" && <ShareView analysis={analysis} onToast={setToast} />}
-        {view === "Settings" && (
-          <SettingsView
-            preferences={preferences}
-            setPreferences={setPreferences}
-            providers={providers}
-            setProviders={setProviders}
-            onToast={setToast}
-          />
-        )}
-      </main>
-    </div>
-  );
-}
+    <div className={`app ${theme}`} style={{ "--glass": `${glass}%` } as React.CSSProperties}>
+      <div className="mapGlow" />
+      <aside className="sidebar glass">
+        <button className="brand" onClick={() => protect("home")} aria-label="Go to home">
+          <span className="brandMark">LA</span>
+          <span>
+            <strong>Lakbay AI</strong>
+            <small>Philippines</small>
+          </span>
+        </button>
 
-function getSessionStatus(): SessionStatus {
-  try {
-    const session = window.localStorage.getItem("luzonloop-session");
-    if (!session) return "guest";
-    const parsed = JSON.parse(session) as { status?: string };
-    return parsed.status === "authenticated" ? "authenticated" : "guest";
-  } catch {
-    return "guest";
-  }
-}
-
-function AppNav({ active, onChange }: { active: View; onChange: (view: View) => void }) {
-  const items: { view: View; icon: React.ComponentType<{ size?: number }>; label: string }[] = [
-    { view: "Home", icon: Search, label: "Home" },
-    { view: "Explore", icon: Sparkles, label: "Explore" },
-    { view: "Destination", icon: MapPin, label: "Destination" },
-    { view: "Saved", icon: Bookmark, label: "Saved" },
-    { view: "Share", icon: Share2, label: "Share" },
-    { view: "Settings", icon: Settings, label: "Settings" }
-  ];
-
-  return (
-    <aside className="app-nav">
-      <button className="brand" onClick={() => onChange("Home")} aria-label="LuzonLoop home">
-        <span className="brand-mark">L</span>
-        <span>LuzonLoop</span>
-      </button>
-      <nav>
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button key={item.view} className={active === item.view ? "nav-item active" : "nav-item"} onClick={() => onChange(item.view)}>
-              <Icon size={18} />
+        <nav aria-label="Primary navigation">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              className={activeModule === item.id ? "active" : ""}
+              onClick={() => protect(item.id)}
+              title={item.protected ? "Sign-in protected area" : item.label}
+            >
+              <item.icon size={18} />
               <span>{item.label}</span>
+              {item.protected && <Lock size={13} />}
             </button>
-          );
-        })}
-      </nav>
-      <div className="nav-rail-card">
-        <Plane size={20} />
-        <strong>PH only</strong>
-        <span>Every result is constrained to Philippine routes, stays, food, and deals.</span>
-      </div>
-    </aside>
-  );
-}
+          ))}
+        </nav>
 
-function TopBar({
-  toast,
-  isAuthenticated,
-  onLogin,
-  onRegister,
-  onSignOut,
-  onSettings
-}: {
-  toast: string;
-  isAuthenticated: boolean;
-  onLogin: () => void;
-  onRegister: () => void;
-  onSignOut: () => void;
-  onSettings: () => void;
-}) {
-  return (
-    <header className="topbar">
-      <div>
-        <p className="status-line">{toast}</p>
-        <h1>Ask for a Philippines trip</h1>
-      </div>
-      <div className="topbar-actions">
-        {isAuthenticated ? (
-          <button className="session-button authenticated" onClick={onSignOut}>
-            <ShieldCheck size={17} />
-            Logged in
-          </button>
-        ) : (
-          <>
-            <button className="session-button" onClick={onLogin}>Log in</button>
-            <button className="session-button" onClick={onRegister}>Register</button>
-          </>
-        )}
-        <button className="icon-button" aria-label="Open settings" onClick={onSettings}>
-          <Palette size={19} />
-        </button>
-        <button className="primary-small" onClick={onSettings}>
-          <Settings size={17} />
-          BYO AI
-        </button>
-      </div>
-    </header>
-  );
-}
-
-function HomeView(props: {
-  prompt: string;
-  setPrompt: (value: string) => void;
-  selectedCategories: Category[];
-  toggleCategory: (category: Category) => void;
-  onSearch: (prompt?: string) => void;
-  isPending: boolean;
-  isAuthenticated: boolean;
-  authMessage: string;
-  searchNotice: string;
-  onLogin: () => void;
-  onRegister: () => void;
-  onDestination: (destination: Destination) => void;
-}) {
-  return (
-    <div className="home-grid">
-      <motion.section className="hero-search-panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="hero-copy">
-          <h2>Plan smarter across hotels, ferries, markets, theme parks, food, and deals.</h2>
-          <p>Type a natural-language travel request and LuzonLoop turns it into structured Philippine travel modules.</p>
-        </div>
-        {!props.isAuthenticated && (
-          <AuthGate message={props.authMessage} onLogin={props.onLogin} onRegister={props.onRegister} />
-        )}
-        <HeroSearch {...props} />
-        <PromptSuggestionChips onPick={(value) => props.onSearch(value)} />
-        <CategoryChips selected={props.selectedCategories} onToggle={props.toggleCategory} />
-      </motion.section>
-      <section className="side-stack">
-        <VideoPanel />
-        <TrendingDestinations onSelect={props.onDestination} />
-      </section>
-    </div>
-  );
-}
-
-function AuthGate({ message, onLogin, onRegister }: { message: string; onLogin: () => void; onRegister: () => void }) {
-  return (
-    <section className="auth-gate" aria-live="polite">
-      <ShieldCheck size={22} />
-      <p>{message}</p>
-      <div>
-        <button type="button" onClick={onLogin}>Log in</button>
-        <button type="button" onClick={onRegister}>Create account</button>
-      </div>
-    </section>
-  );
-}
-
-function HeroSearch({
-  prompt,
-  setPrompt,
-  onSearch,
-  isPending,
-  isAuthenticated,
-  searchNotice
-}: {
-  prompt: string;
-  setPrompt: (value: string) => void;
-  selectedCategories: Category[];
-  toggleCategory: (category: Category) => void;
-  onSearch: (prompt?: string) => void;
-  isPending: boolean;
-  isAuthenticated: boolean;
-  searchNotice: string;
-}) {
-  return (
-    <div className="search-box">
-      <textarea
-        value={prompt}
-        onChange={(event) => setPrompt(event.target.value)}
-        placeholder="Try: 3-day Baguio trip with cheap hotels, street food, night market, and bus options"
-      />
-      <div className="search-footer">
-        <span className="animated-placeholder">Analyzes destination, category, style, budget, duration, and coupons.</span>
-        <button className="search-action" onClick={() => onSearch()} disabled={isPending || prompt.trim().length < 3}>
-          {isPending ? <span className="spinner" /> : <Search size={20} />}
-          {isAuthenticated ? "Search" : "Log in to search"}
-        </button>
-      </div>
-      {searchNotice && <p className="search-notice">{searchNotice}</p>}
-    </div>
-  );
-}
-
-function PromptSuggestionChips({ onPick }: { onPick: (value: string) => void }) {
-  return (
-    <div className="chip-row">
-      {promptSuggestions.map((suggestion) => (
-        <button key={suggestion} className="suggestion-chip" onClick={() => onPick(suggestion)}>
-          {suggestion}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function CategoryChips({ selected, onToggle }: { selected: Category[]; onToggle: (category: Category) => void }) {
-  return (
-    <div className="category-grid">
-      {allCategories.map((category) => {
-        const Icon = categoryIcons[category];
-        return (
-          <button key={category} className={selected.includes(category) ? "category-chip active" : "category-chip"} onClick={() => onToggle(category)}>
-            <Icon size={18} />
-            {category}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function VideoPanel() {
-  return (
-    <section className="media-panel">
-      <div className="media-frame">
-        <img src="https://images.unsplash.com/photo-1578922746465-3a80a228f223?auto=format&fit=crop&w=900&q=80" alt="Philippine island coastline" />
-        <button className="play-button" aria-label="Play travel media">
-          <ChevronRight size={26} />
-        </button>
-      </div>
-      <div>
-        <h3>Featured travel media</h3>
-        <p>Island hops, city food walks, cool mountain routes, and family park days.</p>
-      </div>
-    </section>
-  );
-}
-
-function TrendingDestinations({ onSelect }: { onSelect: (destination: Destination) => void }) {
-  return (
-    <section className="panel">
-      <div className="section-heading">
-        <h3>Trending Philippine destinations</h3>
-        <span>Live mock inventory</span>
-      </div>
-      <div className="destination-list">
-        {destinations.map((destination) => (
-          <button key={destination.id} className="destination-row" onClick={() => onSelect(destination)}>
-            <img src={destination.heroImage} alt={destination.name} />
-            <span>
-              <strong>{destination.name}</strong>
-              <small>{destination.bestFor.join(" / ")}</small>
-            </span>
-            <ChevronRight size={17} />
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ResultsView({
-  analysis,
-  isPending,
-  onSave,
-  onShare,
-  onCopyDeal
-}: {
-  analysis: SearchAnalysis;
-  isPending: boolean;
-  onSave: () => void;
-  onShare: () => void;
-  onCopyDeal: (deal: CouponDeal) => void;
-}) {
-  if (isPending) return <SkeletonLoader />;
-
-  return (
-    <SearchResultsLayout>
-      <AISummaryPanel analysis={analysis} onSave={onSave} onShare={onShare} />
-      <AIAnswerPanel analysis={analysis} />
-      <div className="results-columns">
-        <div className="results-main">
-          <ResultSection title="Hotels / accommodations" icon={BedDouble}>
-            {[...analysis.hotels, ...analysis.accommodations].map((item) => (
-              <TravelCard key={item.id} title={item.name} meta={`${item.area} · ${item.priceRange}`} tags={item.tags} detail={"amenities" in item ? item.amenities.join(", ") : ""} />
-            ))}
-          </ResultSection>
-          <ResultSection title="Transportation" icon={Bus}>
-            {analysis.transport.map((item) => (
-              <TravelCard key={item.id} title={item.route} meta={`${item.mode} · ${item.estimate}`} tags={item.tags} detail={item.notes} />
-            ))}
-          </ResultSection>
-          <ResultSection title="Theme parks / attractions" icon={FerrisWheel}>
-            {[...analysis.themeParks, ...analysis.attractions].map((item) => (
-              <TravelCard key={item.id} title={item.name} meta={`${item.type} · ${item.priceRange}`} tags={item.tags} detail={"familyRating" in item ? `Family rating ${item.familyRating}/5` : "Recommended for this route."} />
-            ))}
-          </ResultSection>
-          <div className="split-sections">
-            <ResultSection title="Markets" icon={ShoppingBag}>
-              {analysis.markets.map((item) => (
-                <TravelCard key={item.id} title={item.name} meta={item.hours} tags={item.tags} detail={item.specialty} />
-              ))}
-            </ResultSection>
-            <ResultSection title="Foods / local specialties" icon={Utensils}>
-              {analysis.foods.map((item) => (
-                <TravelCard key={item.id} title={item.name} meta={item.priceRange} tags={item.tags} detail={item.specialty} />
-              ))}
-            </ResultSection>
+        <div className="profileTile">
+          <div className="avatar">{user ? user.name.slice(0, 2).toUpperCase() : "G"}</div>
+          <div>
+            <strong>{user ? user.name : "Guest traveler"}</strong>
+            <span>{user ? `${user.role} · ${user.currency}` : "Public preview only"}</span>
           </div>
         </div>
-        <aside className="results-side">
-          <BudgetWidget estimate={analysis.budgetEstimate} budget={analysis.budget} />
-          <ItineraryTimeline analysis={analysis} />
-          <DealsSection deals={analysis.deals} onCopy={onCopyDeal} />
-        </aside>
-      </div>
-    </SearchResultsLayout>
+      </aside>
+
+      <main className="main">
+        <header className="topbar glass">
+          <div>
+            <h1>{titleFor(activeModule)}</h1>
+            <p>{subtitleFor(activeModule, isAuthed)}</p>
+          </div>
+          <div className="topActions">
+            <button className="iconButton" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title="Toggle theme">
+              {theme === "dark" ? <SunMedium size={18} /> : <Moon size={18} />}
+            </button>
+            <button className="iconButton" title="Notifications">
+              <Bell size={18} />
+            </button>
+            {user ? (
+              <button className="primary ghost" onClick={() => setUser(null)}>
+                <LogOut size={16} /> Sign Out
+              </button>
+            ) : (
+              <button className="primary" onClick={() => setAuthView("signin")}>
+                <LogIn size={16} /> Sign In
+              </button>
+            )}
+          </div>
+        </header>
+
+        {toast && (
+          <button className="toast" onClick={() => setToast("")}>
+            <Check size={16} /> {toast}
+          </button>
+        )}
+
+        <section className="workspace">
+          <div className="contentColumn">
+            {activeModule === "home" && <HomePanel onStart={() => protect("planner")} />}
+            {activeModule === "dashboard" && <Dashboard savedIds={savedIds} />}
+            {activeModule === "planner" && (
+              <Planner
+                promptState={promptState}
+                setPromptState={setPromptState}
+                generatedPrompt={generatedPrompt}
+                generatePrompt={generatePrompt}
+                runPrompt={() => guardedAction(() => setToast("AI run queued. Backend provider proxy is ready for real keys."))}
+                query={query}
+                setQuery={setQuery}
+                isAuthed={isAuthed}
+              />
+            )}
+            {["hotels", "transport", "tickets", "deals", "klook"].includes(activeModule) && (
+              <RecommendationsModule
+                activeModule={activeModule}
+                query={query}
+                setQuery={setQuery}
+                category={category}
+                setCategory={setCategory}
+                items={visibleRecommendations}
+                saveIds={savedIds}
+                onSave={saveRecommendation}
+              />
+            )}
+            {activeModule === "saved" && <SavedTrips items={recommendations.filter((item) => savedIds.includes(item.id))} onSave={saveRecommendation} />}
+            {activeModule === "integrations" && <Integrations />}
+            {activeModule === "settings" && <SettingsPanel glass={glass} setGlass={setGlass} theme={theme} setTheme={setTheme} />}
+            {activeModule === "admin" && <AdminPanel />}
+            {activeModule === "profile" && <Profile user={user} />}
+          </div>
+
+          <aside className="inspector">
+            <StatusPanel />
+            <DealsPanel onSave={saveRecommendation} savedIds={savedIds} />
+            <DatabasePanel />
+          </aside>
+        </section>
+      </main>
+
+      {authView && <AuthModal view={authView} setView={setAuthView} onClose={() => setAuthView(null)} onSignIn={signIn} />}
+    </div>
   );
 }
 
-function SearchResultsLayout({ children }: { children: React.ReactNode }) {
-  return <motion.div className="results-layout" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}>{children}</motion.div>;
+function titleFor(module: ModuleId) {
+  const titles: Record<ModuleId, string> = {
+    home: "Lakbay AI Philippines",
+    dashboard: "Travel Command Center",
+    planner: "AI Planner",
+    hotels: "Hotels & Accommodations",
+    transport: "Transport Planner",
+    tickets: "Tickets & Activities",
+    deals: "Deals Lab",
+    klook: "Klook Explorer",
+    saved: "Saved Trips",
+    integrations: "AI Integrations",
+    settings: "Settings",
+    admin: "Admin Management",
+    profile: "Profile & Account"
+  };
+  return titles[module];
 }
 
-function AIAnswerPanel({ analysis }: { analysis: SearchAnalysis }) {
-  const primaryStay = analysis.hotels[0] ?? analysis.accommodations[0];
-  const primaryTransport = analysis.transport[0];
-  const primaryFood = analysis.foods[0];
-  const primaryDeal = analysis.deals[0];
-
-  return (
-    <section className="ai-answer-panel" aria-live="polite">
-      <div className="section-heading">
-        <h3><Sparkles size={19} />AI answer</h3>
-        <span>Structured response</span>
-      </div>
-      {analysis.directAnswer ? (
-        <p>{analysis.directAnswer}</p>
-      ) : (
-        <p>
-          For your request, start with <strong>{analysis.destination.name}</strong>. Stay around{" "}
-          <strong>{primaryStay?.area ?? analysis.destination.region}</strong>
-          {primaryStay ? ` at ${primaryStay.name}` : ""}, then use{" "}
-          <strong>{primaryTransport?.mode.toLowerCase() ?? "local transport"}</strong>
-          {primaryTransport ? ` via ${primaryTransport.route}` : ""}. Budget around{" "}
-          <strong>{analysis.budgetEstimate}</strong> for a {analysis.duration.toLowerCase()} plan, then add{" "}
-          <strong>{primaryFood?.name ?? "a local food stop"}</strong>
-          {primaryDeal ? ` and check the ${primaryDeal.source} deal "${primaryDeal.title}" before booking.` : "."}
-        </p>
-      )}
-      <div className="answer-actions">
-        {analysis.categories.map((category) => <span key={category}>{category}</span>)}
-      </div>
-    </section>
-  );
+function subtitleFor(module: ModuleId, isAuthed: boolean) {
+  if (!isAuthed && ["planner", "dashboard", "saved", "integrations", "settings", "admin", "profile"].includes(module)) return guestMessage;
+  const copy: Record<ModuleId, string> = {
+    home: "Premium AI travel planning and research for destinations across the Philippines.",
+    dashboard: "Recent trips, provider health, webhook status, saved links, and destination trends.",
+    planner: "Generate prompts, run AI travel research, compare providers, and reuse structured outputs.",
+    hotels: "Search hotels, hostels, apartments, resorts, villas, and family stays with source links.",
+    transport: "Plan flights, ferries, buses, vans, taxis, transfers, and island-hopping routes.",
+    tickets: "Compare attraction tickets, tours, family activities, city passes, and cultural sites.",
+    deals: "Track verified, estimated, seasonal, member-only, and user-added discount opportunities.",
+    klook: "Explore tours, transfers, bundles, passes, and activity packages with clear link labels.",
+    saved: "Your shortlists, saved itineraries, recent AI queries, and recommendation links.",
+    integrations: "Configure Claude, ChatGPT, Grok, Gemini, OpenRouter, custom providers, and webhooks.",
+    settings: "Profile, travel preferences, AI defaults, theme, glass intensity, exports, and notifications.",
+    admin: "System controls for providers, roles, webhooks, audit logs, and usage protection.",
+    profile: "Account details, saved searches, notification preferences, and session state."
+  };
+  return copy[module];
 }
 
-function AISummaryPanel({ analysis, onSave, onShare }: { analysis: SearchAnalysis; onSave: () => void; onShare: () => void }) {
+function HomePanel({ onStart }: { onStart: () => void }) {
   return (
-    <section className="summary-panel">
+    <motion.section className="hero glass" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
       <div>
-        <p className="status-line">Recommended area / destination</p>
-        <h2>{analysis.destination.name}, {analysis.destination.region}</h2>
-        <p>{analysis.summary}</p>
-        <div className="tag-row">
-          {analysis.styleTags.map((tag) => <span key={tag}>{tag}</span>)}
+        <h2>Plan smarter Philippine trips with AI research that respects source quality.</h2>
+        <p>
+          Build detailed prompts, compare providers, inspect hotels and transport, find Klook activity options, and save verified links without pretending demo data is live inventory.
+        </p>
+        <div className="heroActions">
+          <button className="primary" onClick={onStart}>
+            <Sparkles size={17} /> Open AI Planner
+          </button>
+          <a className="primary ghost" href="https://www.klook.com/en-PH/" target="_blank" rel="noreferrer">
+            <ExternalLink size={16} /> Klook Philippines
+          </a>
         </div>
       </div>
-      <div className="summary-actions">
-        <button onClick={onSave}><Bookmark size={17} />Save</button>
-        <button onClick={onShare}><Share2 size={17} />Share</button>
+      <div className="islandMap" aria-hidden="true">
+        {destinations.slice(0, 8).map((destination, index) => (
+          <span key={destination} style={{ "--i": index } as React.CSSProperties}>
+            {destination}
+          </span>
+        ))}
       </div>
+    </motion.section>
+  );
+}
+
+function Dashboard({ savedIds }: { savedIds: string[] }) {
+  return (
+    <div className="grid two">
+      <Metric title="Saved recommendations" value={String(savedIds.length)} note="Hotels, routes, deals, and Klook activities" />
+      <Metric title="Provider status" value="4/5" note="One provider degraded, no exposed frontend keys" />
+      <Metric title="Webhook health" value="2 live" note="Trip, export, and alert event support" />
+      <Metric title="Destination trends" value="Boracay" note="Beachfront stays and transfers are rising" />
+      <section className="panel wide">
+        <h3>Quick Prompt Launcher</h3>
+        <div className="chips">
+          {["5-day Boracay value trip", "El Nido island-hopping comparison", "Cebu family hotel shortlist", "Manila to Baguio transport timeline"].map((item) => (
+            <button key={item}>{item}</button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Metric({ title, value, note }: { title: string; value: string; note: string }) {
+  return (
+    <section className="panel metric">
+      <span>{title}</span>
+      <strong>{value}</strong>
+      <p>{note}</p>
     </section>
   );
 }
 
-function ResultSection({ title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ size?: number }>; children: React.ReactNode }) {
+function Planner({
+  promptState,
+  setPromptState,
+  generatedPrompt,
+  generatePrompt,
+  runPrompt,
+  query,
+  setQuery,
+  isAuthed
+}: {
+  promptState: PromptBuilderState;
+  setPromptState: (state: PromptBuilderState) => void;
+  generatedPrompt: string;
+  generatePrompt: () => void;
+  runPrompt: () => void;
+  query: string;
+  setQuery: (value: string) => void;
+  isAuthed: boolean;
+}) {
+  const update = <K extends keyof PromptBuilderState>(key: K, value: PromptBuilderState[K]) => setPromptState({ ...promptState, [key]: value });
+
   return (
-    <section className="result-section">
-      <div className="section-heading">
-        <h3><Icon size={19} />{title}</h3>
-      </div>
-      <div className="card-list">{children}</div>
-    </section>
+    <div className="plannerGrid">
+      <section className="panel promptBuilder">
+        <div className="sectionHeader">
+          <h3>Prompt Builder</h3>
+          <span>{isAuthed ? "Protected workspace" : "Preview mode"}</span>
+        </div>
+        <div className="formGrid">
+          <Field label="Destination" value={promptState.destination} onChange={(value) => update("destination", value)} />
+          <Field label="Date range" value={promptState.dateRange} onChange={(value) => update("dateRange", value)} />
+          <Field label="Travelers" value={promptState.travelers} onChange={(value) => update("travelers", value)} />
+          <Field label="Budget" value={promptState.budget} onChange={(value) => update("budget", value)} />
+          <Field label="Trip type" value={promptState.tripType} onChange={(value) => update("tripType", value)} />
+          <Field label="Hotel level" value={promptState.hotelLevel} onChange={(value) => update("hotelLevel", value)} />
+          <Field label="Transport" value={promptState.transportPreference} onChange={(value) => update("transportPreference", value)} />
+          <label>
+            Optimize
+            <select value={promptState.optimizeFor} onChange={(event) => update("optimizeFor", event.target.value as PromptBuilderState["optimizeFor"])}>
+              <option>best value</option>
+              <option>cheapest</option>
+              <option>fastest</option>
+              <option>premium</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Must-see places
+          <textarea value={promptState.mustSee} onChange={(event) => update("mustSee", event.target.value)} />
+        </label>
+        <div className="toggleRow">
+          <button className={promptState.includeKlook ? "selected" : ""} onClick={() => update("includeKlook", !promptState.includeKlook)}>
+            <Check size={15} /> Include Klook
+          </button>
+          <button className={promptState.includeDiscounts ? "selected" : ""} onClick={() => update("includeDiscounts", !promptState.includeDiscounts)}>
+            <Check size={15} /> Discount search
+          </button>
+        </div>
+        <div className="actions">
+          <button className="primary" onClick={generatePrompt}>
+            <Clipboard size={16} /> Generate Prompt
+          </button>
+          <button className="primary ghost" onClick={runPrompt}>
+            <Send size={16} /> Run Prompt
+          </button>
+        </div>
+      </section>
+
+      <section className="panel aiOutput">
+        <div className="sectionHeader">
+          <h3>AI Travel Query</h3>
+          <button onClick={() => copyText(generatedPrompt)}>
+            <Copy size={15} /> Copy
+          </button>
+        </div>
+        <div className="searchBox">
+          <Search size={18} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask for a Philippine trip plan..." />
+        </div>
+        <pre>{generatedPrompt}</pre>
+        <div className="resultCard">
+          <img src={islandPreview} alt="Philippine island route planning preview" />
+          <div>
+            <strong><Bot size={16} /> Structured result preview</strong>
+            <p>Use backend provider keys to return live AI output. Demo recommendations remain clearly marked as estimated or sample links.</p>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
-function TravelCard({ title, meta, detail, tags }: { title: string; meta: string; detail: string; tags: string[] }) {
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <article className="travel-card">
-      <div>
-        <h4>{title}</h4>
-        <p>{meta}</p>
-        <small>{detail}</small>
-      </div>
-      <div className="mini-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>
-    </article>
+    <label>
+      {label}
+      <input value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
   );
 }
 
-function BudgetWidget({ estimate, budget }: { estimate: string; budget: string }) {
-  return (
-    <section className="panel budget-widget">
-      <div className="section-heading"><h3>Budget estimate</h3><span>{budget}</span></div>
-      <strong>{estimate}</strong>
-      <p>Includes stays, local transport, food, and one paid activity. Flights vary by date.</p>
-    </section>
-  );
-}
+function RecommendationsModule({
+  activeModule,
+  query,
+  setQuery,
+  category,
+  setCategory,
+  items,
+  saveIds,
+  onSave
+}: {
+  activeModule: ModuleId;
+  query: string;
+  setQuery: (value: string) => void;
+  category: string;
+  setCategory: (value: string) => void;
+  items: Recommendation[];
+  saveIds: string[];
+  onSave: (id: string) => void;
+}) {
+  const moduleCategory = activeModule === "hotels" ? "hotel" : activeModule === "tickets" ? "ticket" : activeModule === "deals" ? "deal" : activeModule === "klook" ? "klook" : activeModule === "transport" ? "transport" : "all";
+  const moduleItems = items.filter((item) => moduleCategory === "all" || item.category === moduleCategory);
 
-function ItineraryTimeline({ analysis }: { analysis: SearchAnalysis }) {
   return (
     <section className="panel">
-      <div className="section-heading"><h3>Suggested itinerary</h3><span>{analysis.duration}</span></div>
-      <ol className="timeline">
-        {analysis.itinerary.map((item) => (
-          <li key={`${item.day}-${item.title}`}>
-            <span>Day {item.day}</span>
-            <strong>{item.title}</strong>
-            <p>{item.description}</p>
-            <small>{item.estimate}</small>
-          </li>
+      <div className="sectionHeader">
+        <h3>Searchable Recommendation Links</h3>
+        <span>{moduleItems.length} results</span>
+      </div>
+      <div className="toolbar">
+        <div className="searchBox">
+          <Search size={18} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search destination, route, hotel, activity..." />
+        </div>
+        <select value={category} onChange={(event) => setCategory(event.target.value)}>
+          <option value="all">All</option>
+          <option value="hotel">Hotels</option>
+          <option value="transport">Transport</option>
+          <option value="ticket">Tickets</option>
+          <option value="deal">Deals</option>
+          <option value="klook">Klook</option>
+        </select>
+      </div>
+      <div className="recommendationList">
+        {moduleItems.map((item) => (
+          <RecommendationCard key={item.id} item={item} saved={saveIds.includes(item.id)} onSave={() => onSave(item.id)} />
         ))}
-      </ol>
+      </div>
     </section>
   );
 }
 
-function DealsSection({ deals: visibleDeals, onCopy }: { deals: CouponDeal[]; onCopy: (deal: CouponDeal) => void }) {
-  const [filter, setFilter] = useState<DealFilter>("Klook only");
-  const filters: DealFilter[] = ["Klook only", "All deals", "Hotels", "Activities", "Transportation", "Theme parks", "Food and dining", "Expiring soon", "Highest discount", "No minimum spend"];
-  const filtered = visibleDeals.filter((deal) => {
-    if (filter === "All deals") return true;
-    if (filter === "Klook only") return deal.source === "Klook";
-    if (filter === "Expiring soon") return deal.expiry < "2026-09-01";
-    if (filter === "Highest discount") return deal.discount.includes("%") || deal.discount.includes("18");
-    if (filter === "No minimum spend") return deal.minimumSpend === "No minimum";
-    return deal.category === filter;
-  });
-
+function RecommendationCard({ item, saved, onSave }: { item: Recommendation; saved: boolean; onSave: () => void }) {
   return (
-    <section className="panel deals-panel">
-      <div className="section-heading"><h3>Related Deals & Coupons</h3><span>Klook-first</span></div>
-      <select value={filter} onChange={(event) => setFilter(event.target.value as DealFilter)}>
-        {filters.map((item) => <option key={item}>{item}</option>)}
-      </select>
-      {filtered.length === 0 ? <EmptyState title="No matching deals" detail="Relax the filters or include third-party sources in settings." /> : filtered.map((deal) => <CouponCard key={deal.id} deal={deal} onCopy={() => onCopy(deal)} />)}
-    </section>
-  );
-}
-
-function CouponCard({ deal, onCopy }: { deal: CouponDeal; onCopy: () => void }) {
-  return (
-    <article className="coupon-card">
-      <div className="coupon-top">
-        <span><Ticket size={15} />{deal.source}</span>
-        <b>{deal.verified ? "Verified" : "Unverified"}</b>
+    <article className="recommendation">
+      <div>
+        <span className={`status ${item.link.status.replace(" ", "-")}`}>{item.link.status}</span>
+        <h4>{item.title}</h4>
+        <p>{item.summary}</p>
+        <small>{item.meta}</small>
+        <div className="visibleUrl">{item.link.url}</div>
       </div>
-      <h4>{deal.title}</h4>
-      <p>{deal.discount} · {deal.minimumSpend}</p>
-      <small>{deal.eligibility}. Expires {deal.expiry}. {deal.termsPreview}</small>
-      <div className="coupon-actions">
-        <button onClick={onCopy}><Copy size={15} />{deal.code ?? "Auto-applied"}</button>
-        <button><ChevronRight size={15} />Open</button>
+      <div className="recActions">
+        <strong>{item.price}</strong>
+        <a href={item.link.url} target="_blank" rel="noreferrer">
+          <ExternalLink size={15} /> {item.link.label}
+        </a>
+        <button onClick={() => copyText(item.link.url)}>
+          <Copy size={15} /> Copy URL
+        </button>
+        <button onClick={onSave}>
+          <Save size={15} /> {saved ? "Saved" : "Save"}
+        </button>
       </div>
-      <em>{deal.howToUse}</em>
     </article>
   );
 }
 
-function DestinationDetail({ destination, analysis, onCopyDeal }: { destination: Destination; analysis: SearchAnalysis; onCopyDeal: (deal: CouponDeal) => void }) {
+function SavedTrips({ items, onSave }: { items: Recommendation[]; onSave: (id: string) => void }) {
   return (
-    <div className="detail-page">
-      <section className="destination-hero" style={{ backgroundImage: `linear-gradient(90deg, rgba(4,8,14,.84), rgba(4,8,14,.18)), url(${destination.heroImage})` }}>
-        <div>
-          <h2>{destination.name}</h2>
-          <p>{destination.summary}</p>
-          <div className="tag-row">{destination.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+    <section className="panel">
+      <h3>Saved Trips & Links</h3>
+      {items.length ? (
+        <div className="recommendationList">{items.map((item) => <RecommendationCard key={item.id} item={item} saved onSave={() => onSave(item.id)} />)}</div>
+      ) : (
+        <div className="emptyState">
+          <Bookmark size={24} />
+          <strong>No saved links yet</strong>
+          <p>Save hotels, routes, activities, deals, and AI outputs after signing in.</p>
         </div>
+      )}
+    </section>
+  );
+}
+
+function Integrations() {
+  return (
+    <div className="grid two">
+      {aiProviders.map((provider) => (
+        <section className="panel provider" key={provider.id}>
+          <div className="sectionHeader">
+            <h3>{provider.name}</h3>
+            <span className={`health ${provider.health.replace(" ", "-")}`}>{provider.health}</span>
+          </div>
+          <p>{provider.endpoint}</p>
+          <div className="formGrid">
+            <Field label="Model" value={provider.model} onChange={() => undefined} />
+            <Field label="Temperature" value={String(provider.temperature)} onChange={() => undefined} />
+            <Field label="Max tokens" value={String(provider.maxTokens)} onChange={() => undefined} />
+            <Field label="Priority" value={String(provider.priority)} onChange={() => undefined} />
+          </div>
+          <label>
+            API key
+            <input type="password" value="Stored on backend only" readOnly />
+          </label>
+          <button className="primary ghost">
+            <ShieldCheck size={16} /> Test Connection
+          </button>
+        </section>
+      ))}
+      <section className="panel wide">
+        <h3>Webhook Settings</h3>
+        <div className="webhookTable">
+          {webhooks.map((hook) => (
+            <div key={hook.id}>
+              <strong>{hook.name}</strong>
+              <span>{hook.event}</span>
+              <span>{hook.retryPolicy}</span>
+              <span className={`health ${hook.status}`}>{hook.status}</span>
+            </div>
+          ))}
+        </div>
+        <div className="chips">{webhookEvents.map((event) => <button key={event}>{event}</button>)}</div>
       </section>
-      <div className="results-columns">
-        <div className="results-main">
-          <ResultSection title="Overview" icon={MapPin}>
-            <TravelCard title="Best for" meta={destination.region} tags={destination.tags} detail={destination.bestFor.join(", ")} />
-          </ResultSection>
-          <ResultSection title="Travel tips" icon={Star}>
-            {analysis.tips.map((tip) => <TravelCard key={tip} title={tip} meta="Philippines-only guidance" tags={["Best value"]} detail="Verify schedules and weather for the final booking date." />)}
-          </ResultSection>
-        </div>
-        <aside className="results-side">
-          <DealsSection deals={deals} onCopy={onCopyDeal} />
-        </aside>
-      </div>
     </div>
   );
 }
 
-function SavedView() {
+function SettingsPanel({ glass, setGlass, theme, setTheme }: { glass: number; setGlass: (value: number) => void; theme: ThemeMode; setTheme: (value: ThemeMode) => void }) {
   return (
-    <section className="panel page-panel">
-      <div className="section-heading"><h2>Saved</h2><span>Searches, destinations, stays, foods, transport, deals</span></div>
-      <div className="saved-grid">
-        {savedItems.map((item) => <SavedItemCard key={item.id} item={item} />)}
+    <section className="panel settingsPanel">
+      <h3>Workspace Settings</h3>
+      <label>
+        Search settings
+        <input placeholder="Search profile, AI, theme, webhook, prompt defaults..." />
+      </label>
+      <label>
+        Glass intensity
+        <input type="range" min="36" max="92" value={glass} onChange={(event) => setGlass(Number(event.target.value))} />
+      </label>
+      <div className="toggleRow">
+        <button className={theme === "dark" ? "selected" : ""} onClick={() => setTheme("dark")}>
+          <Moon size={15} /> Dark
+        </button>
+        <button className={theme === "light" ? "selected" : ""} onClick={() => setTheme("light")}>
+          <SunMedium size={15} /> Light
+        </button>
       </div>
-    </section>
-  );
-}
-
-function SavedItemCard({ item }: { item: { title: string; detail: string; kind: string; tags: string[] } }) {
-  return (
-    <article className="saved-card">
-      <span>{item.kind}</span>
-      <h3>{item.title}</h3>
-      <p>{item.detail}</p>
-      <div className="mini-tags">{item.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
-    </article>
-  );
-}
-
-function ShareView({ analysis, onToast }: { analysis: SearchAnalysis; onToast: (value: string) => void }) {
-  const [payload, setPayload] = useState<SharePayload>({
-    email: "",
-    subject: `${analysis.destination.name} travel plan`,
-    intro: "Here is the LuzonLoop summary I generated.",
-    channel: "Email",
-    sections: ["Summary", "Hotels", "Transportation", "Deals"],
-    mode: "summary"
-  });
-
-  function update<K extends keyof SharePayload>(key: K, value: SharePayload[K]) {
-    setPayload((current) => ({ ...current, [key]: value }));
-  }
-
-  return (
-    <section className="share-grid">
-      <div className="panel share-form">
-        <div className="section-heading"><h2>Share / Forward</h2><span>Selected-section sharing</span></div>
-        <label>Email<input value={payload.email} onChange={(event) => update("email", event.target.value)} placeholder="traveler@example.com" /></label>
-        <label>Subject<input value={payload.subject} onChange={(event) => update("subject", event.target.value)} /></label>
-        <label>Intro<textarea value={payload.intro} onChange={(event) => update("intro", event.target.value)} /></label>
-        <div className="segmented">
-          {(["summary", "full", "selected"] as const).map((mode) => <button key={mode} className={payload.mode === mode ? "active" : ""} onClick={() => update("mode", mode)}>{mode}</button>)}
-        </div>
-        <div className="share-actions">
-          <button onClick={() => onToast("Email summary queued in placeholder flow.")}><Mail size={17} />Email</button>
-          <button onClick={() => onToast("Messenger-style forward prepared.")}><MessageCircle size={17} />Messenger</button>
-          <button onClick={() => onToast("Share copy placed on clipboard.")}><Copy size={17} />Copy</button>
-          <button onClick={() => onToast("Export placeholder generated.")}><Download size={17} />Export</button>
-        </div>
-      </div>
-      <div className="share-card">
-        <h3>{analysis.destination.name} trip card</h3>
-        <p>{analysis.summary}</p>
-        <strong>{analysis.budgetEstimate}</strong>
-        <div className="mini-tags">{payload.sections.map((section) => <span key={section}>{section}</span>)}</div>
-      </div>
-    </section>
-  );
-}
-
-function SettingsView({
-  preferences,
-  setPreferences,
-  providers,
-  setProviders,
-  onToast
-}: {
-  preferences: UserPreferences;
-  setPreferences: React.Dispatch<React.SetStateAction<UserPreferences>>;
-  providers: AIProviderSetting[];
-  setProviders: React.Dispatch<React.SetStateAction<AIProviderSetting[]>>;
-  onToast: (value: string) => void;
-}) {
-  const fonts = ["Inter", "Satoshi", "Manrope", "DM Sans", "Poppins", "Outfit", "Montserrat"];
-  const [providerStatus, setProviderStatus] = useState<Record<string, string>>({});
-
-  function updatePreference<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) {
-    setPreferences((current) => ({ ...current, [key]: value }));
-  }
-
-  function updateProvider(index: number, updates: Partial<AIProviderSetting>) {
-    setProviders((current) => current.map((provider, itemIndex) => (itemIndex === index ? { ...provider, ...updates } : provider)));
-  }
-
-  function flashStatus(provider: string, message: string) {
-    setProviderStatus((current) => ({ ...current, [provider]: message }));
-    onToast(message);
-  }
-
-  return (
-    <div className="settings-grid">
-      <section className="panel">
-        <div className="section-heading"><h2>Theme / personalization</h2><span>Applied globally</span></div>
-        <div className="toggle-grid">
-          <Toggle label="Night mode" value={preferences.nightMode} onChange={(value) => updatePreference("nightMode", value)} icon={Moon} />
-          <Toggle label="Glassmorphism" value={preferences.glassMode} onChange={(value) => updatePreference("glassMode", value)} icon={Sparkles} />
-          <Toggle label="3D-inspired mode" value={preferences.depthMode} onChange={(value) => updatePreference("depthMode", value)} icon={SunMedium} />
-          <Toggle label="Animated mode" value={preferences.animatedMode} onChange={(value) => updatePreference("animatedMode", value)} icon={Star} />
-        </div>
-        <div className="control-grid">
-          <label>Font family<select value={preferences.fontFamily} onChange={(event) => updatePreference("fontFamily", event.target.value)}>{fonts.map((font) => <option key={font}>{font}</option>)}</select></label>
-          <label>Result density<select value={preferences.resultDensity} onChange={(event) => updatePreference("resultDensity", event.target.value as UserPreferences["resultDensity"])}><option>compact</option><option>standard</option><option>immersive</option></select></label>
-          <label>Response style<select value={preferences.responseStyle} onChange={(event) => updatePreference("responseStyle", event.target.value as UserPreferences["responseStyle"])}><option>Concise</option><option>Balanced</option><option>Detailed</option></select></label>
-          <label>Font scale<input type="range" min="0.9" max="1.15" step="0.01" value={preferences.fontScale} onChange={(event) => updatePreference("fontScale", Number(event.target.value))} /></label>
-          <label>Animation intensity<input type="range" min="0" max="100" value={preferences.animationIntensity} onChange={(event) => updatePreference("animationIntensity", Number(event.target.value))} /></label>
-        </div>
-      </section>
-      <section className="panel">
-        <div className="section-heading"><h2>Coupon preferences</h2><span>Klook-first support</span></div>
-        <div className="toggle-grid">
-          <Toggle label="Enable coupon search" value={preferences.couponSearch} onChange={(value) => updatePreference("couponSearch", value)} icon={Ticket} />
-          <Toggle label="Prefer Klook deals first" value={preferences.preferKlook} onChange={(value) => updatePreference("preferKlook", value)} icon={Check} />
-          <Toggle label="Include third-party sources" value={preferences.includeThirdParty} onChange={(value) => updatePreference("includeThirdParty", value)} icon={ShoppingBag} />
-          <Toggle label="Show only verified offers" value={preferences.verifiedOnly} onChange={(value) => updatePreference("verifiedOnly", value)} icon={Star} />
-          <Toggle label="Hide expired deals" value={preferences.hideExpired} onChange={(value) => updatePreference("hideExpired", value)} icon={Ticket} />
-          <Toggle label="Notify on better matching deals" value={preferences.notifyBetterDeals} onChange={(value) => updatePreference("notifyBetterDeals", value)} icon={Sparkles} />
-        </div>
-      </section>
-      <section className="panel providers-panel">
-        <div className="section-heading"><h2>BYO AI API providers</h2><span>UI-only mock test until server proxy is added</span></div>
-        {providers.map((provider, index) => (
-          <AIProviderForm
-            key={provider.provider}
-            provider={provider}
-            status={providerStatus[provider.provider]}
-            onUpdate={(updates) => updateProvider(index, updates)}
-            onDefault={() => {
-              setProviders((current) => current.map((item) => ({ ...item, isDefault: item.provider === provider.provider })));
-              flashStatus(provider.provider, `${provider.provider} is now the default provider.`);
-            }}
-            onSave={() => {
-              updateProvider(index, { enabled: true });
-              flashStatus(provider.provider, `${provider.provider} settings saved locally.`);
-            }}
-            onTest={() => flashStatus(provider.provider, `${provider.provider} mock connection checked. Add a server proxy before using real secrets.`)}
-          />
+      <div className="grid two">
+        {["Profile settings", "Travel preferences", "AI preferences", "Prompt library", "Export settings", "Notifications", "Region / currency / timezone", "Session expiry behavior"].map((item) => (
+          <div className="settingRow" key={item}>
+            <Settings size={16} /> {item}
+          </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function AdminPanel() {
+  return (
+    <div className="grid two">
+      <Metric title="Role controls" value="3 roles" note="guest, signed-in user, admin" />
+      <Metric title="Rate-limit awareness" value="Enabled" note="AI-heavy actions are backend-gated" />
+      <Metric title="Secrets exposure" value="0 frontend keys" note="Provider credentials stay server-side" />
+      <Metric title="Audit logs" value="Ready" note="Webhook, provider, session, and export events" />
+    </div>
+  );
+}
+
+function Profile({ user }: { user: UserAccount | null }) {
+  return (
+    <section className="panel">
+      <h3>Account</h3>
+      {user ? (
+        <div className="profileForm">
+          <Field label="Name" value={user.name} onChange={() => undefined} />
+          <Field label="Email" value={user.email} onChange={() => undefined} />
+          <Field label="Currency" value={user.currency} onChange={() => undefined} />
+          <Field label="Timezone" value={user.timezone} onChange={() => undefined} />
+        </div>
+      ) : (
+        <p>{guestMessage}</p>
+      )}
+    </section>
+  );
+}
+
+function StatusPanel() {
+  return (
+    <section className="panel compact">
+      <div className="sectionHeader">
+        <h3>Provider Health</h3>
+        <span>Live</span>
+      </div>
+      {aiProviders.slice(0, 4).map((provider) => (
+        <div className="statusRow" key={provider.id}>
+          <span>{provider.name}</span>
+          <strong className={`health ${provider.health.replace(" ", "-")}`}>{provider.health}</strong>
+          <small>{provider.latency}</small>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function DealsPanel({ onSave, savedIds }: { onSave: (id: string) => void; savedIds: string[] }) {
+  const dealItems = recommendations.filter((item) => item.category === "deal" || item.category === "klook");
+  return (
+    <section className="panel compact">
+      <div className="sectionHeader">
+        <h3>Top Deal Findings</h3>
+        <span>Demo links</span>
+      </div>
+      {dealItems.map((item) => (
+        <button className="dealMini" key={item.id} onClick={() => onSave(item.id)}>
+          <img src={islandPreview} alt="" />
+          <span>{item.title}</span>
+          <small>{savedIds.includes(item.id) ? "Saved" : item.link.status}</small>
+        </button>
+      ))}
+    </section>
+  );
+}
+
+function DatabasePanel() {
+  return (
+    <section className="panel compact">
+      <div className="sectionHeader">
+        <h3>Hosting Ready</h3>
+        <Database size={17} />
+      </div>
+      <div className="statusRow">
+        <span>Hostinger Node</span>
+        <strong className="health healthy">ready</strong>
+      </div>
+      <div className="statusRow">
+        <span>GitHub Actions</span>
+        <strong className="health healthy">ready</strong>
+      </div>
+      <div className="statusRow">
+        <span>Database schema</span>
+        <strong className="health healthy">ready</strong>
+      </div>
+    </section>
+  );
+}
+
+function AuthModal({
+  view,
+  setView,
+  onClose,
+  onSignIn
+}: {
+  view: "signin" | "signup" | "forgot" | "reset";
+  setView: (view: "signin" | "signup" | "forgot" | "reset") => void;
+  onClose: () => void;
+  onSignIn: (role?: "user" | "admin") => void;
+}) {
+  const title = view === "signin" ? "Sign in" : view === "signup" ? "Create account" : view === "forgot" ? "Forgot password" : "Reset password";
+
+  return (
+    <div className="modalBackdrop" role="presentation">
+      <section className="authModal glass" role="dialog" aria-modal="true" aria-label={title}>
+        <button className="close" onClick={onClose}>
+          <Eye size={16} />
+        </button>
+        <div className="brand compactBrand">
+          <span className="brandMark">LA</span>
+          <span>
+            <strong>{title}</strong>
+            <small>Protected AI travel workspace</small>
+          </span>
+        </div>
+        <p>{guestMessage}</p>
+        <label>
+          Email
+          <input type="email" placeholder="you@example.com" />
+        </label>
+        {view !== "forgot" && (
+          <label>
+            Password
+            <input type="password" placeholder="Minimum 8 characters" />
+          </label>
+        )}
+        {view === "reset" && (
+          <label>
+            Reset code
+            <input placeholder="Enter reset code" />
+          </label>
+        )}
+        <button className="primary" onClick={() => onSignIn("user")}>
+          <LogIn size={16} /> Continue
+        </button>
+        <button className="primary ghost" onClick={() => onSignIn("admin")}>
+          <ShieldCheck size={16} /> Demo Admin Session
+        </button>
+        <div className="authLinks">
+          <button onClick={() => setView("signin")}>Sign In</button>
+          <button onClick={() => setView("signup")}>Sign Up</button>
+          <button onClick={() => setView("forgot")}>Forgot Password</button>
+          <button onClick={() => setView("reset")}>Reset</button>
+        </div>
       </section>
     </div>
   );
 }
 
-function Toggle({ label, value, onChange, icon: Icon }: { label: string; value: boolean; onChange: (value: boolean) => void; icon: React.ComponentType<{ size?: number }> }) {
-  return (
-    <button type="button" className={value ? "toggle active" : "toggle"} onClick={() => onChange(!value)} aria-pressed={value}>
-      <Icon size={17} />
-      <span>{label}</span>
-      <b>{value ? "On" : "Off"}</b>
-    </button>
-  );
-}
-
-function AIProviderForm({
-  provider,
-  status,
-  onUpdate,
-  onDefault,
-  onSave,
-  onTest
-}: {
-  provider: AIProviderSetting;
-  status?: string;
-  onUpdate: (updates: Partial<AIProviderSetting>) => void;
-  onDefault: () => void;
-  onSave: () => void;
-  onTest: () => void;
-}) {
-  return (
-    <article className="provider-row">
-      <div className="provider-title">
-        <strong>{provider.provider}</strong>
-        <button className={provider.enabled ? "tiny-switch active" : "tiny-switch"} onClick={() => onUpdate({ enabled: !provider.enabled })}>{provider.enabled ? "Enabled" : "Disabled"}</button>
-      </div>
-      <input type="password" value={provider.apiKey} placeholder="API key stored locally for this mock UI" onChange={(event) => onUpdate({ apiKey: event.target.value })} />
-      <input value={provider.baseUrl ?? ""} placeholder="Optional base URL" onChange={(event) => onUpdate({ baseUrl: event.target.value })} />
-      <input value={provider.model} placeholder="Model" onChange={(event) => onUpdate({ model: event.target.value })} />
-      <div className="provider-actions">
-        <button type="button" onClick={onTest}>Test</button>
-        <button type="button" onClick={onSave}>Save</button>
-        <button type="button" className={provider.isDefault ? "active" : ""} onClick={onDefault}>{provider.isDefault ? "Default" : "Set default"}</button>
-      </div>
-      <p className="provider-status">{status ?? (provider.isDefault ? "Default provider" : "Ready")}</p>
-    </article>
-  );
-}
-
-function EmptyState({ title, detail }: { title: string; detail: string }) {
-  return (
-    <div className="empty-state">
-      <Sparkles size={22} />
-      <strong>{title}</strong>
-      <span>{detail}</span>
-    </div>
-  );
-}
-
-function SkeletonLoader() {
-  return (
-    <div className="skeleton-grid">
-      {Array.from({ length: 7 }).map((_, index) => <div className="skeleton" key={index} />)}
-    </div>
-  );
-}
+export default App;

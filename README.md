@@ -1,49 +1,75 @@
-# LuzonLoop
+# Lakbay AI Philippines
 
-LuzonLoop is a premium Philippines-only AI travel search app. It uses a large natural-language search composer, mock prompt analysis, structured result modules, saved items, share/forward controls, theme personalization, BYO AI provider settings, and Klook-oriented coupon discovery.
+Premium AI-powered travel planning and travel research for trips around the Philippines. The app includes a production-style React/Vite frontend, a Node.js static/API server, environment configuration, database schema, GitHub CI, and Hostinger-ready deployment notes.
 
-## Stack
+## Features
 
-- Vite + React + TypeScript
-- Framer Motion
-- Lucide React
-- Plain CSS design tokens for a Hostinger-friendly Node.js build
+- AI planner workspace with prompt builder, protected generate/run actions, provider compare readiness, and reusable prompt output.
+- Modules for hotels, accommodations, transport, tickets, activities, discounts, promo opportunities, Klook exploration, saved trips, settings, integrations, profile, and admin controls.
+- Sign-in gate behavior for AI search, prompt generation, saved trips, provider tools, exports, and personalized workspace features.
+- Recommendation cards with visible URLs, external link behavior, copy URL, save action, source labels, and verification statuses.
+- AI provider management surface for ChatGPT, Claude, Gemini, Grok, OpenRouter, and custom providers.
+- Webhook settings for trip, AI response, export, deal, provider failure, and settings events.
+- Dark/light themes and adjustable glass intensity.
+- Node.js hosting entrypoint with API health, auth/session, trips, AI-run queue, and webhook-test endpoints.
+- SQL schema for users, sessions, trips, saved links, providers, webhook endpoints, and webhook logs.
 
-## Local Setup
+## Local Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local URL shown by Vite, usually `http://localhost:5173`.
+Open `http://localhost:5173`.
 
 ## Production Build
 
 ```bash
 npm run build
-npm run preview
+npm start
 ```
 
-The production artifact is emitted to `dist/`.
+The Node server serves `dist` and API routes on `PORT` or `3000`.
 
-## Hostinger Deployment Notes
+## Hostinger Node.js Hosting
 
-This project is prepared for a simple GitHub-to-Hostinger workflow:
+1. Push the repository to GitHub.
+2. In Hostinger, create a Node.js app using Node `20.19+` or `22`.
+3. Set the startup file to `server.js`.
+4. Set the build command to `npm ci && npm run build`.
+5. Set the start command to `npm start`.
+6. Add environment variables from `.env.example`.
+7. Configure `DATABASE_URL` if using managed Postgres. Without it, the demo server uses `data/runtime/*.json` as a local development fallback.
 
-1. Push this repository to GitHub.
-2. In Hostinger, create or connect a Node.js application from the repository.
-3. Set the build command to `npm install && npm run build`.
-4. Set the start command to `npm run start` or serve the generated `dist/` folder if using Hostinger static frontend hosting.
-5. Add environment variables from `.env.example` in Hostinger, keeping real API keys out of Git.
+## Database
 
-The first version is frontend-first with mock/local data. For secure live AI calls, add a small Node/Express server or Hostinger-compatible API layer that stores provider keys server-side and proxies requests. Do not expose production secrets through `VITE_` variables.
+Apply `db/schema.sql` to your managed Postgres database:
 
-## App Areas
+```bash
+npm run db:schema
+```
 
-- Home: large AI-first search, prompt suggestions, categories, media, trending destinations.
-- Explore / Results: structured search output, category filters, budget, itinerary, coupons, share actions.
-- Destination Detail: overview, stays, transport, attractions, markets, food, media, deals.
-- Saved: saved searches, destinations, stays, foods, transport, and deals.
-- Share / Forward: email, messenger-style forwarding, selected-section sharing, export placeholder.
-- Settings: theme, glass/3D/animation modes, font scale, response style, coupon preferences, BYO AI providers.
+Provider API keys and webhook signing secrets belong on the server only. Do not place live secrets in frontend code.
+
+## GitHub Ready
+
+The workflow in `.github/workflows/ci.yml` runs:
+
+```bash
+npm ci
+npm run lint
+npm run build
+```
+
+## API Routes
+
+- `GET /api/health`
+- `POST /api/auth/signup`
+- `POST /api/auth/signin`
+- `GET /api/trips`
+- `POST /api/trips`
+- `POST /api/ai/run`
+- `POST /api/webhooks/test`
+
+Protected routes require `Authorization: Bearer <token>`.

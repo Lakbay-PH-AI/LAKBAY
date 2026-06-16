@@ -4,21 +4,14 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  { ignores: ["dist", "node_modules"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
-      ecmaVersion: 2022,
-      globals: {
-        document: "readonly",
-        window: "readonly",
-        navigator: "readonly",
-        setTimeout: "readonly",
-        clearTimeout: "readonly",
-        HTMLTextAreaElement: "readonly"
-      }
+      ecmaVersion: 2023,
+      sourceType: "module"
     },
     plugins: {
       "react-hooks": reactHooks,
@@ -27,6 +20,17 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }]
+    }
+  },
+  {
+    files: ["server.js", "scripts/**/*.js"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        console: "readonly",
+        process: "readonly",
+        URL: "readonly"
+      }
     }
   }
 );

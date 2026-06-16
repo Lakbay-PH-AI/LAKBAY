@@ -1,6 +1,5 @@
-node_modules/
-dist/
-qa/
+node_modules
+dist
 .env
 .env.local
 .DS_Store
@@ -8,4 +7,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-*.tsbuildinfo
+data/runtime
+coverage
+.vite
