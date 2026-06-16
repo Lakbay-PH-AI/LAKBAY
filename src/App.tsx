@@ -129,7 +129,7 @@ export default function App() {
         setSelectedDestination(next.destination);
         setPrompt(nextPrompt);
         setView("Explore");
-        setToast(`Structured results ready for ${next.destination.name}.`);
+        setToast(`AI answer and structured results ready for ${next.destination.name}.`);
       }, 650);
     });
   }
@@ -484,6 +484,7 @@ function ResultsView({
   return (
     <SearchResultsLayout>
       <AISummaryPanel analysis={analysis} onSave={onSave} onShare={onShare} />
+      <AIAnswerPanel analysis={analysis} />
       <div className="results-columns">
         <div className="results-main">
           <ResultSection title="Hotels / accommodations" icon={BedDouble}>
@@ -526,6 +527,35 @@ function ResultsView({
 
 function SearchResultsLayout({ children }: { children: React.ReactNode }) {
   return <motion.div className="results-layout" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}>{children}</motion.div>;
+}
+
+function AIAnswerPanel({ analysis }: { analysis: SearchAnalysis }) {
+  const primaryStay = analysis.hotels[0] ?? analysis.accommodations[0];
+  const primaryTransport = analysis.transport[0];
+  const primaryFood = analysis.foods[0];
+  const primaryDeal = analysis.deals[0];
+
+  return (
+    <section className="ai-answer-panel" aria-live="polite">
+      <div className="section-heading">
+        <h3><Sparkles size={19} />AI answer</h3>
+        <span>Structured response</span>
+      </div>
+      <p>
+        For your request, start with <strong>{analysis.destination.name}</strong>. Stay around{" "}
+        <strong>{primaryStay?.area ?? analysis.destination.region}</strong>
+        {primaryStay ? ` at ${primaryStay.name}` : ""}, then use{" "}
+        <strong>{primaryTransport?.mode.toLowerCase() ?? "local transport"}</strong>
+        {primaryTransport ? ` via ${primaryTransport.route}` : ""}. Budget around{" "}
+        <strong>{analysis.budgetEstimate}</strong> for a {analysis.duration.toLowerCase()} plan, then add{" "}
+        <strong>{primaryFood?.name ?? "a local food stop"}</strong>
+        {primaryDeal ? ` and check the ${primaryDeal.source} deal "${primaryDeal.title}" before booking.` : "."}
+      </p>
+      <div className="answer-actions">
+        {analysis.categories.map((category) => <span key={category}>{category}</span>)}
+      </div>
+    </section>
+  );
 }
 
 function AISummaryPanel({ analysis, onSave, onShare }: { analysis: SearchAnalysis; onSave: () => void; onShare: () => void }) {

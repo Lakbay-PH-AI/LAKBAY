@@ -246,6 +246,7 @@ button {
 .hero-search-panel,
 .panel,
 .summary-panel,
+.ai-answer-panel,
 .result-section,
 .media-panel,
 .share-card,
@@ -259,6 +260,7 @@ button {
 .mode-glass .hero-search-panel,
 .mode-glass .panel,
 .mode-glass .summary-panel,
+.mode-glass .ai-answer-panel,
 .mode-glass .result-section,
 .mode-glass .media-panel,
 .mode-glass .share-card {
@@ -569,6 +571,42 @@ button {
   background:
     linear-gradient(135deg, rgba(57, 214, 195, 0.16), rgba(255, 109, 125, 0.1)),
     var(--surface);
+}
+
+.ai-answer-panel {
+  padding: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 179, 90, 0.12), rgba(57, 214, 195, 0.1)),
+    var(--surface);
+}
+
+.ai-answer-panel p {
+  margin: 0;
+  max-width: 980px;
+  color: color-mix(in srgb, var(--text), var(--muted) 18%);
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.ai-answer-panel strong {
+  color: var(--text);
+}
+
+.answer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.answer-actions span {
+  border: 1px solid color-mix(in srgb, var(--accent), white 12%);
+  background: rgba(57, 214, 195, 0.12);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .tag-row span,
