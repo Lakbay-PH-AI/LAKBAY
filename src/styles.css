@@ -578,8 +578,19 @@ pre {
 
 .status.unverified,
 .health.failed,
-.health.not-configured {
+.health.not-configured,
+.health.needs-key,
+.health.inactive {
   background: var(--coral);
+}
+
+.health.inactive {
+  background: #9bb3ad;
+}
+
+.inlineEdit {
+  flex: 1;
+  margin: 0;
 }
 
 .recActions {

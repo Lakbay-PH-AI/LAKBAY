@@ -40,7 +40,7 @@ The Node server serves `dist` and API routes on `PORT` or `3000`.
 4. Set the build command to `npm ci && npm run build`.
 5. Set the start command to `npm start`.
 6. Add environment variables from `.env.example`.
-7. Configure `DATABASE_URL` if using managed Postgres. Without it, the demo server uses `data/runtime/*.json` as a local development fallback.
+7. Configure `DATABASE_URL` if using managed Postgres. Without it, the server uses `data/runtime/*.json` as a local development file-store fallback.
 
 ## Database
 

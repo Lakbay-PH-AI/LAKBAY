@@ -45,7 +45,7 @@ export interface RecommendationLink {
   label: string;
   url: string;
   source: string;
-  linkType: "direct" | "deep link" | "affiliate" | "api result" | "manual" | "demo/sample";
+  linkType: "direct" | "deep link" | "affiliate" | "api result" | "manual";
   status: VerificationStatus;
 }
 
@@ -67,12 +67,14 @@ export interface AIProviderConfig {
   name: string;
   endpoint: string;
   model: string;
+  apiKey: string;
+  headersJson: string;
   temperature: number;
   maxTokens: number;
   active: boolean;
   defaultProvider: boolean;
   priority: number;
-  health: "healthy" | "degraded" | "not configured";
+  health: "healthy" | "degraded" | "needs key" | "inactive";
   latency: string;
   usage: string;
 }

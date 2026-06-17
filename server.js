@@ -149,7 +149,7 @@ async function handleApi(req, res) {
     const body = await parseBody(req);
     json(res, 200, {
       delivered: false,
-      preview: {
+      payload: {
         event: body.event || "trip.created",
         signed: Boolean(process.env.WEBHOOK_SIGNING_SECRET),
         payload: body.payload || {}

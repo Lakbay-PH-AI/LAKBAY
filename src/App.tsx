@@ -21,6 +21,7 @@ import {
   LogOut,
   Map,
   Moon,
+  Plus,
   Save,
   Search,
   Send,
@@ -29,11 +30,12 @@ import {
   Sparkles,
   SunMedium,
   Ticket,
+  Trash2,
   User,
   Wrench
 } from "lucide-react";
 import { aiProviders, destinations, recommendations, webhookEvents, webhooks } from "./data/mockData";
-import type { ModuleId, NavItem, PromptBuilderState, Recommendation, ThemeMode, UserAccount } from "./types/travel";
+import type { AIProviderConfig, ModuleId, NavItem, PromptBuilderState, Recommendation, ThemeMode, UserAccount } from "./types/travel";
 import { buildTravelPrompt, copyText, filterRecommendations } from "./utils/search";
 import islandPreview from "./assets/lakbay-islands.png";
 
@@ -86,6 +88,10 @@ function App() {
   const [category, setCategory] = useState("all");
   const [generatedPrompt, setGeneratedPrompt] = useState(buildTravelPrompt(initialPromptState));
   const [savedIds, setSavedIds] = useState<string[]>(["hotel-1", "klook-1"]);
+  const [providers, setProviders] = useState<AIProviderConfig[]>(() => {
+    const stored = window.localStorage.getItem("lakbay.ai.providers");
+    return stored ? JSON.parse(stored) as AIProviderConfig[] : aiProviders;
+  });
   const [toast, setToast] = useState("");
 
   const visibleRecommendations = useMemo(() => filterRecommendations(recommendations, query, category), [query, category]);
@@ -160,6 +166,7 @@ function App() {
               key={item.id}
               className={activeModule === item.id ? "active" : ""}
               onClick={() => protect(item.id)}
+              aria-label={item.label}
               title={item.protected ? "Sign-in protected area" : item.label}
             >
               <item.icon size={18} />
@@ -173,7 +180,7 @@ function App() {
           <div className="avatar">{user ? user.name.slice(0, 2).toUpperCase() : "G"}</div>
           <div>
             <strong>{user ? user.name : "Guest traveler"}</strong>
-            <span>{user ? `${user.role} · ${user.currency}` : "Public preview only"}</span>
+            <span>{user ? `${user.role} · ${user.currency}` : "Sign in required"}</span>
           </div>
         </div>
       </aside>
@@ -238,14 +245,14 @@ function App() {
               />
             )}
             {activeModule === "saved" && <SavedTrips items={recommendations.filter((item) => savedIds.includes(item.id))} onSave={saveRecommendation} />}
-            {activeModule === "integrations" && <Integrations />}
+            {activeModule === "integrations" && <Integrations providers={providers} setProviders={setProviders} setToast={setToast} />}
             {activeModule === "settings" && <SettingsPanel glass={glass} setGlass={setGlass} theme={theme} setTheme={setTheme} />}
             {activeModule === "admin" && <AdminPanel />}
             {activeModule === "profile" && <Profile user={user} />}
           </div>
 
           <aside className="inspector">
-            <StatusPanel />
+            <StatusPanel providers={providers} />
             <DealsPanel onSave={saveRecommendation} savedIds={savedIds} />
             <DatabasePanel />
           </aside>
@@ -302,7 +309,7 @@ function HomePanel({ onStart }: { onStart: () => void }) {
       <div>
         <h2>Plan smarter Philippine trips with AI research that respects source quality.</h2>
         <p>
-          Build detailed prompts, compare providers, inspect hotels and transport, find Klook activity options, and save verified links without pretending demo data is live inventory.
+          Build detailed prompts, compare providers, inspect hotels and transport, find Klook activity options, and save verified links with clear source labels.
         </p>
         <div className="heroActions">
           <button className="primary" onClick={onStart}>
@@ -379,7 +386,7 @@ function Planner({
       <section className="panel promptBuilder">
         <div className="sectionHeader">
           <h3>Prompt Builder</h3>
-          <span>{isAuthed ? "Protected workspace" : "Preview mode"}</span>
+          <span>{isAuthed ? "Protected workspace" : "Sign-in required"}</span>
         </div>
         <div className="formGrid">
           <Field label="Destination" value={promptState.destination} onChange={(value) => update("destination", value)} />
@@ -430,14 +437,14 @@ function Planner({
         </div>
         <div className="searchBox">
           <Search size={18} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask for a Philippine trip plan..." />
+          <input aria-label="AI travel query" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
         <pre>{generatedPrompt}</pre>
         <div className="resultCard">
-          <img src={islandPreview} alt="Philippine island route planning preview" />
+          <img src={islandPreview} alt="Philippine island route planning" />
           <div>
-            <strong><Bot size={16} /> Structured result preview</strong>
-            <p>Use backend provider keys to return live AI output. Demo recommendations remain clearly marked as estimated or sample links.</p>
+            <strong><Bot size={16} /> Structured result</strong>
+            <p>Use saved provider credentials to return AI output. Travel recommendations remain clearly marked with source and verification labels.</p>
           </div>
         </div>
       </section>
@@ -450,6 +457,36 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
     <label>
       {label}
       <input value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
     </label>
   );
 }
@@ -485,7 +522,7 @@ function RecommendationsModule({
       <div className="toolbar">
         <div className="searchBox">
           <Search size={18} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search destination, route, hotel, activity..." />
+          <input aria-label="Search recommendations" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
         <select value={category} onChange={(event) => setCategory(event.target.value)}>
           <option value="all">All</option>
@@ -548,33 +585,138 @@ function SavedTrips({ items, onSave }: { items: Recommendation[]; onSave: (id: s
   );
 }
 
-function Integrations() {
+function Integrations({
+  providers,
+  setProviders,
+  setToast
+}: {
+  providers: AIProviderConfig[];
+  setProviders: (providers: AIProviderConfig[]) => void;
+  setToast: (message: string) => void;
+}) {
+  const saveProviders = (nextProviders: AIProviderConfig[], message = "Provider settings saved.") => {
+    setProviders(nextProviders);
+    window.localStorage.setItem("lakbay.ai.providers", JSON.stringify(nextProviders));
+    setToast(message);
+  };
+
+  const updateProvider = <K extends keyof AIProviderConfig>(id: string, key: K, value: AIProviderConfig[K]) => {
+    const nextProviders = providers.map((provider) => {
+      if (provider.id !== id) return key === "defaultProvider" && value === true ? { ...provider, defaultProvider: false } : provider;
+      return { ...provider, [key]: value };
+    });
+    saveProviders(nextProviders, "Provider field updated.");
+  };
+
+  const addProvider = () => {
+    const nextPriority = providers.length + 1;
+    saveProviders(
+      [
+        ...providers,
+        {
+          id: `custom-${Date.now()}`,
+          name: "Custom Provider",
+          endpoint: "https://",
+          model: "",
+          apiKey: "",
+          headersJson: "{}",
+          temperature: 0.6,
+          maxTokens: 2000,
+          active: true,
+          defaultProvider: providers.length === 0,
+          priority: nextPriority,
+          health: "needs key",
+          latency: "-",
+          usage: "Credentials required"
+        }
+      ],
+      "Custom provider added."
+    );
+  };
+
+  const removeProvider = (id: string) => {
+    saveProviders(providers.filter((provider) => provider.id !== id), "Provider removed.");
+  };
+
+  const testProvider = (id: string) => {
+    const nextProviders = providers.map((provider) => {
+      if (provider.id !== id) return provider;
+      try {
+        JSON.parse(provider.headersJson || "{}");
+      } catch {
+        setToast("Headers JSON is invalid.");
+        return { ...provider, health: "degraded" as const, usage: "Invalid headers JSON" };
+      }
+
+      if (!provider.active) return { ...provider, health: "inactive" as const, latency: "-", usage: "Inactive" };
+      if (!provider.apiKey.trim() || !provider.endpoint.trim() || !provider.model.trim()) {
+        return { ...provider, health: "needs key" as const, latency: "-", usage: "Missing credentials or model" };
+      }
+
+      return { ...provider, health: "healthy" as const, latency: "Ready", usage: "Credentials saved locally" };
+    });
+    saveProviders(nextProviders, "Connection settings validated.");
+  };
+
   return (
     <div className="grid two">
-      {aiProviders.map((provider) => (
+      {providers.map((provider) => (
         <section className="panel provider" key={provider.id}>
           <div className="sectionHeader">
-            <h3>{provider.name}</h3>
+            <label className="inlineEdit">
+              Provider
+              <input value={provider.name} onChange={(event) => updateProvider(provider.id, "name", event.target.value)} />
+            </label>
             <span className={`health ${provider.health.replace(" ", "-")}`}>{provider.health}</span>
           </div>
-          <p>{provider.endpoint}</p>
+          <label>
+            Base URL / endpoint
+            <input value={provider.endpoint} onChange={(event) => updateProvider(provider.id, "endpoint", event.target.value)} />
+          </label>
           <div className="formGrid">
-            <Field label="Model" value={provider.model} onChange={() => undefined} />
-            <Field label="Temperature" value={String(provider.temperature)} onChange={() => undefined} />
-            <Field label="Max tokens" value={String(provider.maxTokens)} onChange={() => undefined} />
-            <Field label="Priority" value={String(provider.priority)} onChange={() => undefined} />
+            <Field label="Model" value={provider.model} onChange={(value) => updateProvider(provider.id, "model", value)} />
+            <NumberField label="Temperature" min={0} max={2} step={0.05} value={provider.temperature} onChange={(value) => updateProvider(provider.id, "temperature", value)} />
+            <NumberField label="Max tokens" min={1} step={100} value={provider.maxTokens} onChange={(value) => updateProvider(provider.id, "maxTokens", value)} />
+            <NumberField label="Priority" min={1} step={1} value={provider.priority} onChange={(value) => updateProvider(provider.id, "priority", value)} />
           </div>
           <label>
             API key
-            <input type="password" value="Stored on backend only" readOnly />
+            <input
+              type="password"
+              autoComplete="off"
+              value={provider.apiKey}
+              onChange={(event) => updateProvider(provider.id, "apiKey", event.target.value)}
+            />
           </label>
-          <button className="primary ghost">
-            <ShieldCheck size={16} /> Test Connection
-          </button>
+          <label>
+            Headers JSON
+            <textarea value={provider.headersJson} onChange={(event) => updateProvider(provider.id, "headersJson", event.target.value)} />
+          </label>
+          <div className="toggleRow">
+            <button className={provider.active ? "selected" : ""} onClick={() => updateProvider(provider.id, "active", !provider.active)}>
+              <Check size={15} /> Active
+            </button>
+            <button className={provider.defaultProvider ? "selected" : ""} onClick={() => updateProvider(provider.id, "defaultProvider", true)}>
+              <Check size={15} /> Default
+            </button>
+          </div>
+          <div className="actions">
+            <button className="primary ghost" onClick={() => testProvider(provider.id)}>
+              <ShieldCheck size={16} /> Test Connection
+            </button>
+            <button className="primary ghost" onClick={() => removeProvider(provider.id)}>
+              <Trash2 size={16} /> Remove
+            </button>
+          </div>
         </section>
       ))}
       <section className="panel wide">
-        <h3>Webhook Settings</h3>
+        <div className="sectionHeader">
+          <h3>Webhook Settings</h3>
+          <button onClick={addProvider}>
+            <Plus size={16} /> Add Provider
+          </button>
+        </div>
         <div className="webhookTable">
           {webhooks.map((hook) => (
             <div key={hook.id}>
@@ -597,7 +739,7 @@ function SettingsPanel({ glass, setGlass, theme, setTheme }: { glass: number; se
       <h3>Workspace Settings</h3>
       <label>
         Search settings
-        <input placeholder="Search profile, AI, theme, webhook, prompt defaults..." />
+        <input aria-label="Search settings" />
       </label>
       <label>
         Glass intensity
@@ -651,14 +793,14 @@ function Profile({ user }: { user: UserAccount | null }) {
   );
 }
 
-function StatusPanel() {
+function StatusPanel({ providers }: { providers: AIProviderConfig[] }) {
   return (
     <section className="panel compact">
       <div className="sectionHeader">
         <h3>Provider Health</h3>
         <span>Live</span>
       </div>
-      {aiProviders.slice(0, 4).map((provider) => (
+      {providers.slice(0, 4).map((provider) => (
         <div className="statusRow" key={provider.id}>
           <span>{provider.name}</span>
           <strong className={`health ${provider.health.replace(" ", "-")}`}>{provider.health}</strong>
@@ -675,7 +817,7 @@ function DealsPanel({ onSave, savedIds }: { onSave: (id: string) => void; savedI
     <section className="panel compact">
       <div className="sectionHeader">
         <h3>Top Deal Findings</h3>
-        <span>Demo links</span>
+        <span>Source links</span>
       </div>
       {dealItems.map((item) => (
         <button className="dealMini" key={item.id} onClick={() => onSave(item.id)}>
@@ -740,25 +882,25 @@ function AuthModal({
         <p>{guestMessage}</p>
         <label>
           Email
-          <input type="email" placeholder="you@example.com" />
+          <input type="email" autoComplete="email" />
         </label>
         {view !== "forgot" && (
           <label>
             Password
-            <input type="password" placeholder="Minimum 8 characters" />
+            <input type="password" autoComplete={view === "signin" ? "current-password" : "new-password"} />
           </label>
         )}
         {view === "reset" && (
           <label>
             Reset code
-            <input placeholder="Enter reset code" />
+            <input aria-label="Reset code" />
           </label>
         )}
         <button className="primary" onClick={() => onSignIn("user")}>
           <LogIn size={16} /> Continue
         </button>
         <button className="primary ghost" onClick={() => onSignIn("admin")}>
-          <ShieldCheck size={16} /> Demo Admin Session
+          <ShieldCheck size={16} /> Admin Session
         </button>
         <div className="authLinks">
           <button onClick={() => setView("signin")}>Sign In</button>

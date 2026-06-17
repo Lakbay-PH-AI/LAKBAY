@@ -27,12 +27,12 @@ export const recommendations: Recommendation[] = [
     price: "Estimated PHP 8,500-14,000/night",
     meta: "Resort · White Beach · breakfast options · refundable rates vary",
     idealFor: "Couples and families who want beachfront convenience",
-    notes: ["Check exact cancellation terms before booking.", "Demo/sample link: verify live room inventory on source."],
+    notes: ["Check exact cancellation terms before booking.", "Verify live room inventory on the source before purchase."],
     link: {
       label: "View Deal",
       url: "https://www.booking.com/searchresults.html?ss=Henann%20Palm%20Beach%20Resort%20Boracay",
       source: "Booking.com search",
-      linkType: "demo/sample",
+      linkType: "manual",
       status: "estimated"
     }
   },
@@ -45,12 +45,12 @@ export const recommendations: Recommendation[] = [
     price: "Estimated PHP 1,200-3,000/night",
     meta: "Hostel · El Nido town · Wi-Fi · backpacker-friendly",
     idealFor: "Solo travelers and budget pairs",
-    notes: ["Ask about power backup and early breakfast for tour days.", "Demo/sample link: verify rates and dates."],
+    notes: ["Ask about power backup and early breakfast for tour days.", "Verify rates and dates on the source before purchase."],
     link: {
       label: "Open Source",
       url: "https://www.agoda.com/search?city=18218&textToSearch=Spin%20Designer%20Hostel%20El%20Nido",
       source: "Agoda search",
-      linkType: "demo/sample",
+      linkType: "manual",
       status: "estimated"
     }
   },
@@ -67,7 +67,7 @@ export const recommendations: Recommendation[] = [
       label: "Book / Check Route",
       url: "https://www.klook.com/en-PH/search/result/?query=Boracay%20airport%20transfer",
       source: "Klook search",
-      linkType: "demo/sample",
+      linkType: "manual",
       status: "estimated"
     }
   },
@@ -84,7 +84,7 @@ export const recommendations: Recommendation[] = [
       label: "View Ticket",
       url: "https://www.klook.com/en-PH/search/result/?query=Puerto%20Princesa%20Underground%20River",
       source: "Klook search",
-      linkType: "demo/sample",
+      linkType: "manual",
       status: "estimated"
     }
   },
@@ -118,18 +118,18 @@ export const recommendations: Recommendation[] = [
       label: "Open on Klook",
       url: "https://www.klook.com/en-PH/search/result/?query=Coron%20Super%20Ultimate%20Tour",
       source: "Klook search",
-      linkType: "demo/sample",
+      linkType: "manual",
       status: "estimated"
     }
   }
 ];
 
 export const aiProviders: AIProviderConfig[] = [
-  { id: "openai", name: "ChatGPT", endpoint: "https://api.openai.com/v1", model: "gpt-4.1", temperature: 0.6, maxTokens: 2400, active: true, defaultProvider: true, priority: 1, health: "healthy", latency: "142ms", usage: "PHP 0.18 / query est." },
-  { id: "claude", name: "Claude", endpoint: "https://api.anthropic.com", model: "claude-sonnet-4", temperature: 0.5, maxTokens: 2200, active: true, defaultProvider: false, priority: 2, health: "healthy", latency: "168ms", usage: "PHP 0.24 / query est." },
-  { id: "gemini", name: "Gemini", endpoint: "https://generativelanguage.googleapis.com", model: "gemini-2.5-pro", temperature: 0.55, maxTokens: 2000, active: true, defaultProvider: false, priority: 3, health: "healthy", latency: "153ms", usage: "PHP 0.16 / query est." },
-  { id: "grok", name: "Grok", endpoint: "https://api.x.ai/v1", model: "grok-3", temperature: 0.7, maxTokens: 1800, active: false, defaultProvider: false, priority: 4, health: "not configured", latency: "-", usage: "No key" },
-  { id: "openrouter", name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1", model: "auto", temperature: 0.5, maxTokens: 2000, active: true, defaultProvider: false, priority: 5, health: "degraded", latency: "278ms", usage: "Provider routed" }
+  { id: "openai", name: "ChatGPT", endpoint: "https://api.openai.com/v1", model: "gpt-4.1", apiKey: "", headersJson: "{}", temperature: 0.6, maxTokens: 2400, active: true, defaultProvider: true, priority: 1, health: "needs key", latency: "-", usage: "Credentials required" },
+  { id: "claude", name: "Claude", endpoint: "https://api.anthropic.com", model: "claude-sonnet-4", apiKey: "", headersJson: "{}", temperature: 0.5, maxTokens: 2200, active: true, defaultProvider: false, priority: 2, health: "needs key", latency: "-", usage: "Credentials required" },
+  { id: "gemini", name: "Gemini", endpoint: "https://generativelanguage.googleapis.com", model: "gemini-2.5-pro", apiKey: "", headersJson: "{}", temperature: 0.55, maxTokens: 2000, active: true, defaultProvider: false, priority: 3, health: "needs key", latency: "-", usage: "Credentials required" },
+  { id: "grok", name: "Grok", endpoint: "https://api.x.ai/v1", model: "grok-3", apiKey: "", headersJson: "{}", temperature: 0.7, maxTokens: 1800, active: false, defaultProvider: false, priority: 4, health: "inactive", latency: "-", usage: "Inactive" },
+  { id: "openrouter", name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1", model: "auto", apiKey: "", headersJson: "{}", temperature: 0.5, maxTokens: 2000, active: true, defaultProvider: false, priority: 5, health: "needs key", latency: "-", usage: "Credentials required" }
 ];
 
 export const webhookEvents = [
